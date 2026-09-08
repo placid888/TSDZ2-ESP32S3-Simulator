@@ -1,0 +1,30 @@
+name: Build ESP32-S3 Simulator
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.1  # 呼叫樂鑫官方原生環境
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Firmware with idf.py
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Upload Binary Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32s3-simulator-binaries
+          path: |
+            build/tsdz2_esp32s3_sim.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
