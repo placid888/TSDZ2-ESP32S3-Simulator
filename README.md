@@ -56,3 +56,14 @@ TSDZ2-ESP32S3-Simulator/
 │   └── tsdz_utils.h
 ├── CMakeLists.txt              # 頂層專案宣告
 └── sdkconfig.defaults          # 指定晶片為 esp32s3、開啟 USB CDC 與 NimBLE 藍牙
+
+欺騙連線狀態 (Heartbeat 偽裝)：
+ESP32_B 判斷「馬達是否連線」的唯一標準，就是 UART 有沒有持續收到開頭為 0x43、長度 29 Bytes 且 CRC16 校驗正確的封包。我們在 main.c 中嚴格設定 vTaskDelayUntil 以 100ms (10 Hz) 的頻率發送完美格式的封包，因此 ESP32_B 會 100% 相信它正連接著實體 STM8 馬達，不會觸發斷線錯誤。
+​欺騙 STM8 (電機) 韌體版本：
+在我們寫的 main.c 第 107 行左右，有這段封包賦值：
+packet[15] = 20;  // STM8 韌體版本 (v2.0)
+原作者的通訊協議中，第 16 個 Byte (packet[15]) 就是保留給 STM8 版本的。我們填入 20，當你的 Android App 透過藍牙向 ESP32_B 查詢電機版本時，ESP32_B 就會把這個 20 轉傳給 App，App 就會判定電機韌體為 v2.0。如果你未來需要測試 App 對舊版韌體的相容性，只要把這裡改成 10 (v1.0) 即可。
+​關於 ESP32 自身的版本查詢：
+你的架構是：手機 App \rightarrow ESP32_B \rightarrow ESP32-S3 (模擬器)。
+當 App 查詢「ESP32 版本」時，是由你車載那塊真實的 ESP32_B 直接回覆它自己內部的版本號碼，這部分完全由 ESP32_B 原有韌體處理，不需要我們這塊模擬器介入偽裝。
+​簡單來說，在 ESP32_B 與手機 App 的眼中，這塊 ESP32-S3 模擬器就是一顆**「運作極度穩定、韌體版本為 v2.0 的真實 TSDZ2 電機」**。
