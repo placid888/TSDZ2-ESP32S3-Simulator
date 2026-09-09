@@ -1,40 +1,23 @@
-name: Build ESP32-S3 Simulator
-
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    container: espressif/idf:release-v5.1
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
       - name: Configure Flash Size and Build
         run: |
           . $IDF_PATH/export.sh
           
-          # 1. 在設定晶片目標前，先將 16MB 與分割表參數寫入預設檔
+          # 1. 寫入設定
           echo "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y" >> sdkconfig.defaults
           echo "CONFIG_ESPTOOLPY_FLASHSIZE=\"16MB\"" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"" >> sdkconfig.defaults
           
-          # 2. 設定目標晶片為 esp32s3 (此時系統會正式讀入並套用上方設定)
+          # 2. 設定目標與編譯
           idf.py set-target esp32s3
-          
-          # 3. 執行編譯
           idf.py build
+          
+          # 3. 自動合併成單一 bin 檔
+          idf.py merge-bin -o build/merged-firmware.bin
 
       - name: Upload Binary Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: esp32s3-simulator-binaries
           path: |
-            build/tsdz2_esp32s3_sim.bin
-            build/bootloader/bootloader.bin
-            build/partition_table/partition-table.bin
+            build/merged-firmware.bin
