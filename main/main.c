@@ -24,19 +24,21 @@
 #define CT_MSG_ID         0x43
 #define CT_OS_MSG_BYTES   29
 
-// --- 物理模型變數 ---
+// --- 物理模型預設變數 (自動模式使用) ---
 static float current_speed_kmh = 0.0f;
-static uint8_t cadence_rpm = 0;
-static uint16_t torque_adc = 120;
 static uint8_t duty_cycle = 0;
 static uint8_t battery_current_x10 = 0;
 static uint32_t wheel_pulses = 0;
 static uint16_t crank_pulses = 0;
 
-// --- 藍牙覆寫控制變數 ---
+// --- 全功能藍牙覆寫控制變數 ---
 static bool ble_override = false;
-static uint8_t ble_cadence = 0;
-static uint16_t ble_torque = 120;
+static uint8_t ble_cadence = 0;         // C: 踏頻 (RPM)
+static uint16_t ble_torque = 120;       // T: 扭力 (ADC)
+static float ble_speed_kmh = 25.0f;     // S: 車速 (km/h)
+static uint16_t ble_voltage = 48;       // V: 電池電壓 (V)
+static uint8_t ble_error = 0;           // E: 錯誤代碼/煞車
+static uint8_t ble_temp = 38;           // H: 馬達溫度 (°C)
 static uint32_t last_ble_rx_time = 0;
 
 // --- UART 初始化 ---
@@ -53,64 +55,81 @@ void sim_uart_init(void) {
     ESP_ERROR_CHECK(uart_driver_install(SIM_UART_NUM, 256, 256, 0, NULL, 0));
 }
 
-// --- UART 發送與物理運算任務 ---
+// --- UART 發送任務 (結合覆寫機制) ---
 void sim_sender_task(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xPeriod = pdMS_TO_TICKS(100);
     uint32_t tick_count = 0;
 
+    // 準備要封裝進 UART 的最終變數
+    uint8_t final_cadence;
+    uint16_t final_torque;
+    float final_speed;
+    uint16_t final_voltage_mv;
+    uint8_t final_error;
+    uint8_t final_temp;
+
     while (1) {
         tick_count++;
         float time_sec = tick_count * 0.1f;
 
-        // 若 BLE 超過 5 秒未收到新指令，切回自動模式
-        if (ble_override && (xTaskGetTickCount() - last_ble_rx_time > pdMS_TO_TICKS(5000))) {
+        // 若 BLE 超過 10 秒未收到新指令，切回自動模式 (放寬到 10 秒方便測試)
+        if (ble_override && (xTaskGetTickCount() - last_ble_rx_time > pdMS_TO_TICKS(10000))) {
             ble_override = false;
-            ESP_LOGI(TAG, "BLE 指令超時，切回自動正弦波模擬");
+            ESP_LOGI(TAG, "BLE 指令超時，切回自動模型");
         }
 
-        // 決定使用 BLE 遙控值 或 自動產生的正弦波
         if (ble_override) {
-            cadence_rpm = ble_cadence;
-            torque_adc = ble_torque;
+            // 套用作弊遙控數值
+            final_cadence = ble_cadence;
+            final_torque = ble_torque;
+            final_speed = ble_speed_kmh;
+            final_voltage_mv = ble_voltage * 1000;
+            final_error = ble_error;
+            final_temp = ble_temp;
         } else {
-            cadence_rpm = (uint8_t)(75.0f + 10.0f * sinf(time_sec * 3.14f / 2.0f));
-            torque_adc = 120 + (uint16_t)(80.0f * fabsf(sinf(time_sec * 3.14f / 0.4f)));
+            // 動態產生自動數值
+            final_cadence = (uint8_t)(75.0f + 10.0f * sinf(time_sec * 3.14f / 2.0f));
+            final_torque = 120 + (uint16_t)(80.0f * fabsf(sinf(time_sec * 3.14f / 0.4f)));
+            if (current_speed_kmh < 25.0f) current_speed_kmh += 0.1f;
+            final_speed = current_speed_kmh;
+            final_voltage_mv = 48000; // 自動模式預設 48V
+            final_error = 0x00;
+            final_temp = 38;
         }
 
-        duty_cycle = (uint8_t)((torque_adc > 120 ? torque_adc - 120 : 0) * (120 - 20) / 80 + 20);
+        // 計算依賴變數
+        duty_cycle = (uint8_t)((final_torque > 120 ? final_torque - 120 : 0) * (120 - 20) / 80 + 20);
         if(duty_cycle > 120) duty_cycle = 120; 
 
-        if (current_speed_kmh < 25.0f) current_speed_kmh += 0.1f;
-
         battery_current_x10 = (duty_cycle * 15) / 100;
-        wheel_pulses += (uint32_t)(current_speed_kmh * 0.1f);
-        crank_pulses += (cadence_rpm > 0) ? 1 : 0;
+        wheel_pulses += (uint32_t)(final_speed * 0.1f);
+        crank_pulses += (final_cadence > 0) ? 1 : 0;
 
         uint8_t packet[CT_OS_MSG_BYTES] = {0};
-        uint16_t speed_x10 = (uint16_t)(current_speed_kmh * 10.0f);
-        uint16_t voltage_mv = 48000;
-        uint16_t torque_x100 = (torque_adc > 120 ? torque_adc - 120 : 0) * 35;
+        uint16_t speed_x10 = (uint16_t)(final_speed * 10.0f);
+        uint16_t torque_x100 = (final_torque > 120 ? final_torque - 120 : 0) * 35;
         uint16_t motor_erps = speed_x10 * 12;
 
+        // 組裝作弊封包
         packet[0] = CT_MSG_ID;
-        packet[1] = 0x00;
-        packet[2] = voltage_mv & 0xFF;
-        packet[3] = (voltage_mv >> 8) & 0xFF;
+        packet[1] = final_error;                                // 煞車與錯誤碼
+        packet[2] = final_voltage_mv & 0xFF;                    // 電壓低位
+        packet[3] = (final_voltage_mv >> 8) & 0xFF;             // 電壓高位
         packet[4] = battery_current_x10;
-        packet[5] = speed_x10 & 0xFF;
-        packet[6] = ((speed_x10 >> 8) & 0x07);
-        packet[7] = cadence_rpm;
-        packet[8] = torque_x100 & 0xFF;
+        packet[5] = speed_x10 & 0xFF;                           // 車速低位
+        packet[6] = ((speed_x10 >> 8) & 0x07);                  // 車速高位
+        packet[7] = final_cadence;                              // 踏頻
+        packet[8] = torque_x100 & 0xFF;                         // Nm 扭力
         packet[9] = (torque_x100 >> 8) & 0xFF;
-        packet[10] = 38;
+        packet[10] = final_temp;                                // 馬達溫度
         packet[11] = duty_cycle;
         packet[12] = motor_erps & 0xFF;
         packet[13] = (motor_erps >> 8) & 0xFF;
         packet[14] = 0x00;
-        packet[15] = 20;
-        packet[16] = torque_adc & 0xFF;
-        packet[17] = (torque_adc >> 8) & 0xFF;
+        packet[15] = 20;                                        // STM8 韌體版本 (v2.0)
+        packet[16] = final_torque & 0xFF;                       // ADC 扭力
+        packet[17] = (final_torque >> 8) & 0xFF;
         packet[18] = 0x00;
         packet[19] = 0x00;
         packet[20] = 80;
@@ -144,15 +163,27 @@ static int gatt_svr_chr_access(uint16_t conn_handle, uint16_t attr_handle,
         int len = ctxt->om->om_len > 63 ? 63 : ctxt->om->om_len;
         memcpy(buf, ctxt->om->om_data, len);
         
-        int parse_c = 0, parse_t = 0;
-        // 解析格式 "C:踏頻,T:扭力" (例如 "C:90,T:180")
-        if (sscanf(buf, "C:%d,T:%d", &parse_c, &parse_t) == 2) {
-            ble_cadence = (uint8_t)parse_c;
-            ble_torque = (uint16_t)parse_t;
-            ble_override = true;
-            last_ble_rx_time = xTaskGetTickCount();
-            ESP_LOGI(TAG, "收到 BLE 遙控: Cadence=%d, Torque=%d", ble_cadence, ble_torque);
+        int p_c = -1, p_t = -1, p_s = -1, p_v = -1, p_e = -1, p_h = -1;
+        
+        // 支援多參數靈活解析 (沒傳的參數維持上次的狀態)
+        // 格式支援： C:90,T:180,S:35,V:42,E:0,H:80 (參數可任意組合)
+        char *token = strtok(buf, ",");
+        while (token != NULL) {
+            if (sscanf(token, "C:%d", &p_c) == 1) ble_cadence = (uint8_t)p_c;
+            else if (sscanf(token, "T:%d", &p_t) == 1) ble_torque = (uint16_t)p_t;
+            else if (sscanf(token, "S:%d", &p_s) == 1) ble_speed_kmh = (float)p_s;
+            else if (sscanf(token, "V:%d", &p_v) == 1) ble_voltage = (uint16_t)p_v;
+            else if (sscanf(token, "E:%d", &p_e) == 1) ble_error = (uint8_t)p_e;
+            else if (sscanf(token, "H:%d", &p_h) == 1) ble_temp = (uint8_t)p_h;
+            
+            token = strtok(NULL, ",");
         }
+
+        ble_override = true;
+        last_ble_rx_time = xTaskGetTickCount();
+        
+        ESP_LOGI(TAG, "BLE 遙控設定 -> C:%d, T:%d, S:%.1f, V:%d, E:%d, H:%d", 
+                 ble_cadence, ble_torque, ble_speed_kmh, ble_voltage, ble_error, ble_temp);
     }
     return 0;
 }
@@ -198,7 +229,6 @@ static void ble_app_on_sync(void) {
 }
 
 void ble_host_task(void *param) {
-    ESP_LOGI(TAG, "BLE Host Task Started");
     nimble_port_run();
     nimble_port_freertos_deinit();
 }
@@ -207,7 +237,6 @@ void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
     sim_uart_init();
     
-    // 初始化 NimBLE 藍牙協議棧
     nimble_port_init();
     ble_hs_cfg.sync_cb = ble_app_on_sync;
     ble_svc_gap_device_name_set("TSDZ2_SIM");
@@ -217,7 +246,6 @@ void app_main(void) {
     ble_gatts_add_svcs(gatt_svr_svcs);
     nimble_port_freertos_init(ble_host_task);
 
-    // 啟動物理模型發送任務
     xTaskCreatePinnedToCore(sim_sender_task, "sim_sender", 4096, NULL, 5, NULL, 1);
-    ESP_LOGI(TAG, "TSDZ2 ESP32-S3 Simulator (BLE Enabled) Ready!");
+    ESP_LOGI(TAG, "TSDZ2 Simulator (Full Cheat Mode) Ready!");
 }
