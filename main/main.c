@@ -165,8 +165,6 @@ static int gatt_svr_chr_access(uint16_t conn_handle, uint16_t attr_handle,
         
         int p_c = -1, p_t = -1, p_s = -1, p_v = -1, p_e = -1, p_h = -1;
         
-        // 支援多參數靈活解析 (沒傳的參數維持上次的狀態)
-        // 格式支援： C:90,T:180,S:35,V:42,E:0,H:80 (參數可任意組合)
         char *token = strtok(buf, ",");
         while (token != NULL) {
             if (sscanf(token, "C:%d", &p_c) == 1) ble_cadence = (uint8_t)p_c;
@@ -211,14 +209,12 @@ static void ble_app_advertise(void) {
     struct ble_hs_adv_fields rsp_fields;
     struct ble_gap_adv_params adv_params;
 
-    // 主廣播封包：設定一般發現模式
     memset(&fields, 0, sizeof fields);
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     fields.tx_pwr_lvl_is_present = 1;
     fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
     ble_gap_adv_set_fields(&fields);
 
-    // 掃描回應封包 (Scan Response)：強制夾帶完整名稱與 Service UUID
     memset(&rsp_fields, 0, sizeof rsp_fields);
     rsp_fields.name = (uint8_t *)"TSDZ2_SIM";
     rsp_fields.name_len = strlen("TSDZ2_SIM");
@@ -230,7 +226,6 @@ static void ble_app_advertise(void) {
     rsp_fields.uuids16_is_complete = 1;
     ble_gap_adv_rsp_set_fields(&rsp_fields);
 
-    // 開始廣播
     memset(&adv_params, 0, sizeof adv_params);
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
@@ -262,4 +257,4 @@ void app_main(void) {
 
     xTaskCreatePinnedToCore(sim_sender_task, "sim_sender", 4096, NULL, 5, NULL, 1);
     ESP_LOGI(TAG, "TSDZ2 Simulator (Full Cheat Mode) Ready!");
-}   <>
+}   
