@@ -1,3 +1,19 @@
+name: Build ESP32-S3 Simulator
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.1
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Configure Flash Size and Build
         run: |
           . $IDF_PATH/export.sh
