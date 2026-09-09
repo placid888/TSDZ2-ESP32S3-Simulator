@@ -17,10 +17,17 @@ jobs:
       - name: Configure Flash Size and Build
         run: |
           . $IDF_PATH/export.sh
-          idf.py set-target esp32s3
-          # 強制設定 Flash 大小為 16MB
+          
+          # 1. 在設定晶片目標前，先將 16MB 與分割表參數寫入預設檔
           echo "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y" >> sdkconfig.defaults
           echo "CONFIG_ESPTOOLPY_FLASHSIZE=\"16MB\"" >> sdkconfig.defaults
+          echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
+          echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"" >> sdkconfig.defaults
+          
+          # 2. 設定目標晶片為 esp32s3 (此時系統會正式讀入並套用上方設定)
+          idf.py set-target esp32s3
+          
+          # 3. 執行編譯
           idf.py build
 
       - name: Upload Binary Artifacts
