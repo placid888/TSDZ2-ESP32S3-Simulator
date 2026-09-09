@@ -8,16 +8,19 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: espressif/idf:release-v5.1  # 呼叫樂鑫官方原生環境
+    container: espressif/idf:release-v5.1
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Build Firmware with idf.py
+      - name: Configure Flash Size and Build
         run: |
           . $IDF_PATH/export.sh
           idf.py set-target esp32s3
+          # 強制設定 Flash 大小為 16MB
+          echo "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y" >> sdkconfig.defaults
+          echo "CONFIG_ESPTOOLPY_FLASHSIZE=\"16MB\"" >> sdkconfig.defaults
           idf.py build
 
       - name: Upload Binary Artifacts
