@@ -60,7 +60,7 @@ void sim_uart_init(void) {
 // --- UART 發送任務 (結合物理引擎與覆寫機制) ---
 void sim_sender_task(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xPeriod = pdMS_TO_TICKS(100);
+    const TickType_t xPeriod = pdMS_TO_TICKS(300);
     uint32_t tick_count = 0;
 
     uint8_t final_cadence;
