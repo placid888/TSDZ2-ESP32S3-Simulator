@@ -39,7 +39,7 @@ static uint16_t ble_torque = 120;       // T: 扭力 (ADC)
 static float ble_speed_kmh = 25.0f;     // S: 車速 (km/h)
 static uint16_t ble_voltage = 48;       // V: 電池電壓 (V)
 static uint8_t ble_error = 0;           // E: 錯誤代碼/煞車
-static uint8_t ble_temp = 38;           // H: 馬達溫度 (°C)
+static uint8_t ble_temp = 160;           // H: 馬達溫度 (°C)
 static int8_t ble_slope = 0;            // P: 當前坡度 (%)  <-- 新增坡度變數
 static uint32_t last_ble_rx_time = 0;
 
@@ -123,7 +123,7 @@ void sim_sender_task(void *pvParameters) {
             final_speed = current_speed_kmh;
             final_voltage_mv = 48000; 
             final_error = 0x00;
-            final_temp = 38;
+            final_temp =  160;
         }
 
         // 計算依賴變數
