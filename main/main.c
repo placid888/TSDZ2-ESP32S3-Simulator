@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/uart.h"
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
@@ -272,6 +273,11 @@ void ble_host_task(void *param) {
 }
 
 void app_main(void) {
+    // 強制關閉 ESP32-S3 內建 RGB LED (GPIO 48)
+    gpio_reset_pin(GPIO_NUM_48);
+    gpio_set_direction(GPIO_NUM_48, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_48, 0);
+
     ESP_ERROR_CHECK(nvs_flash_init());
     sim_uart_init();
     
@@ -286,4 +292,4 @@ void app_main(void) {
 
     xTaskCreatePinnedToCore(sim_sender_task, "sim_sender", 4096, NULL, 5, NULL, 1);
     ESP_LOGI(TAG, "TSDZ2 Simulator (Physics Engine Mode) Ready!");
-}       
+}
