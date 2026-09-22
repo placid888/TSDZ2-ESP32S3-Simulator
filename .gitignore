@@ -1,0 +1,9 @@
+# 忽略 ESP-IDF 編譯出來的龐大資料夾
+build/
+
+# 忽略本機端的環境設定暫存檔
+sdkconfig
+sdkconfig.old
+
+# 忽略 VS Code C/C++ 語法檢查器產生的快取
+.clangd/

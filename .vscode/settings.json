@@ -1,0 +1,12 @@
+{
+  "idf.currentSetup": "C:\\esp\\v5.3\\.espressif\\v5.3\\esp-idf",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  },
+  "clangd.path": "C:\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=c:\\esp\\projects\\TSDZ2-ESP32S3-Simulator\\build"
+  ]
+}
