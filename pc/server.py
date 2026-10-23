@@ -80,6 +80,9 @@ class BenchLink:
 
     def _refresh(self):
         data = self._line("TELEMETRY", telemetry=True)
+        previous_count=(self.telemetry or {}).get('link_timeout_count',0)
+        if data.get('link_timeout') and data.get('link_timeout_count',0)>previous_count:
+            self.event('ESP32 已因通訊逾時自動停止；需手動套用並 RUN')
         self.telemetry = data
         self.updated = time.monotonic()
         self.samples.append({"time": time.time(), **data})

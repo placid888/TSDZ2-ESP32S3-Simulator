@@ -28,6 +28,18 @@ void bench_init(VirtualBench *b) {
     b->battery = (VirtualBattery){48, 48, 0, 0.15f};
     b->controller.fake = true;
 }
+void bench_keepalive(VirtualBench *b, int64_t now_us) {
+    b->last_contact_us = now_us;
+}
+bool bench_check_link(VirtualBench *b, int64_t now_us) {
+    if (!b->running || now_us < b->last_contact_us ||
+        now_us - b->last_contact_us < (int64_t)BENCH_LINK_TIMEOUT_MS * 1000) return false;
+    char reply[8];
+    bench_command(b, "STOP", reply, sizeof(reply));
+    b->link_timeout = true;
+    b->link_timeout_count++;
+    return true;
+}
 void bench_step(VirtualBench *b, float dt) {
     if (!isfinite(dt) || dt <= 0 || dt > 0.1f) return;
     if (!b->running) return;
@@ -67,7 +79,8 @@ bool bench_telemetry(const VirtualBench *b, const char *dac_backend,
             "\"pas_hz\":%.3f,\"wheel_hz\":%.3f,\"dac_backend\":\"%s\","
             "\"dac_codes\":[%u,%u,%u,%u,%u,%u,%u,%u],\"gpio\":\"logical-only\","
             "\"fault_api\":1,\"fault\":\"%s\",\"effective_cadence_rpm\":%.2f,"
-            "\"effective_torque_nm\":%.2f,\"effective_brake\":%s}",
+            "\"effective_torque_nm\":%.2f,\"effective_brake\":%s,"
+            "\"watchdog_ms\":%u,\"link_timeout\":%s,\"link_timeout_count\":%lu}",
             b->running ? "true" : "false", b->controller.pwm_percent,
             b->battery.terminal_v, b->battery.open_circuit_v, b->motor.current_a,
             b->motor.rpm, b->motor.erps, b->rider.cadence_rpm, b->rider.torque_nm,
@@ -76,7 +89,8 @@ bool bench_telemetry(const VirtualBench *b, const char *dac_backend,
             dac_codes[0], dac_codes[1], dac_codes[2], dac_codes[3],
             dac_codes[4], dac_codes[5], dac_codes[6], dac_codes[7],
             fault_name(b->fault), bench_effective_cadence(b), bench_effective_torque(b),
-            bench_effective_brake(b) ? "true" : "false");
+            bench_effective_brake(b) ? "true" : "false", BENCH_LINK_TIMEOUT_MS,
+            b->link_timeout ? "true" : "false", (unsigned long)b->link_timeout_count);
         if (n >= 0 && (size_t)n < size) return true;
     }
     if (size) reply[0] = 0;
@@ -92,7 +106,7 @@ bool bench_command(VirtualBench *b, const char *line, char *reply, size_t size) 
             b->grade_percent, b->brake, b->signals.hall, b->signals.pas_hz, b->signals.wheel_hz);
         return true;
     }
-    if (n == 1 && !strcmp(verb, "RUN")) { b->running = true; }
+    if (n == 1 && !strcmp(verb, "RUN")) { b->running = true; b->link_timeout = false; }
     else if (n == 1 && !strcmp(verb, "STOP")) {
         b->running = false;
         b->fault = BENCH_FAULT_NONE;

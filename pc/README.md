@@ -174,3 +174,6 @@ CSV 新增 fault、effective_cadence_rpm、effective_torque_nm、effective_brake
 POST `/api/test/start` 範例：`{"kind":"endurance","cycles":3}`。cycles 必須是整數，拒絕布林、小數、字串與超限值。報告含 total_cycles、current_cycle、completed_cycles、total_checks，逐項結果與採樣步驟附循環編號。只有四項檢查都通過才計入已完成次數；最終是否成功仍以 status 與 stop_confirmed 為準。
 
 完成後按「重新讀取報告」可找回整次測試。此功能只驗證 ESP32 模型反覆運轉，並非實體電機、DAC 或 STM8 的長時間耐久測試。
+## 通訊保護
+
+新韌體在運轉中超過 5 秒沒有有效指令會自動停止，並清除 PWM、故障與 DAC 碼。控制台顯示本次開機的觸發次數與停止原因。PC 服務的定期查詢維持通訊；關閉網頁仍須按 STOP。逾時後重新連線不會自動 RUN，請確認狀態再套用設定並手動開始。

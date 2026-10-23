@@ -60,6 +60,8 @@ $('enduranceForm').onsubmit=e=>{e.preventDefault();action('test/start',{kind:'en
 const faultNames={NONE:'正常',PAS_LOSS:'踏頻中斷',TORQUE_ZERO:'扭力歸零',BRAKE_STUCK:'煞車卡住'};
 for(const button of document.querySelectorAll('[data-fault]'))button.onclick=()=>action('fault',{fault:button.dataset.fault},button.dataset.fault==='NONE'?'模型故障已解除；原設定保留。':`已注入模型故障：${faultNames[button.dataset.fault]}。`);
 function renderFault(t){
+  $('linkGuard').textContent=t?.watchdog_ms?`通訊保護：${t.watchdog_ms/1000} 秒無有效指令自動停止 · 本次開機觸發 ${t.link_timeout_count||0} 次${t.link_timeout?' · 已因通訊逾時停止，需手動套用並 RUN':''}。PC 服務持續查詢時，關閉網頁不會停止。`:'通訊保護：目前韌體未回報支援';
+  $('linkGuard').style.color=t?.link_timeout?'var(--orange)':'var(--muted)';
   const supported=t?.fault_api===1;
   $('faultBadge').textContent=supported?(faultNames[t.fault]||t.fault):'需更新韌體';
   $('faultBadge').style.color=supported&&t.fault!=='NONE'?'var(--orange)':'var(--green)';

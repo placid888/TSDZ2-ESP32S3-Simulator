@@ -116,6 +116,24 @@ int main(void) {
     CHECK(bench_telemetry(&b, "disabled", codes, telemetry, sizeof(telemetry)));
     CHECK(strstr(telemetry, "\"running\":true") && strstr(telemetry, "\"brake\":true"));
     CHECK(bench_telemetry(&b, "spi-zero-only", codes, telemetry, sizeof(telemetry)));
+    bench_init(&b); command(&b, "SET PWM 40"); command(&b, "RUN");
+    command(&b, "SET FAULT PAS_LOSS"); bench_keepalive(&b, 1000000);
+    CHECK(!bench_check_link(&b, 5999999) && b.running);
+    CHECK(bench_check_link(&b, 6000000) && !b.running);
+    CHECK(b.link_timeout && b.link_timeout_count == 1 && b.controller.pwm_percent == 0);
+    CHECK(b.fault == BENCH_FAULT_NONE && b.motor.rpm == 0 && b.signals.pas_hz == 0);
+    CHECK(!bench_check_link(&b, 12000000) && b.link_timeout_count == 1);
+    bench_keepalive(&b, 12000000);
+    CHECK(b.link_timeout && !b.running); /* polling never restarts */
+    CHECK(bench_telemetry(&b, "mock", codes, telemetry, sizeof(telemetry)));
+    CHECK(strstr(telemetry, "\"watchdog_ms\":5000") && strstr(telemetry, "\"link_timeout\":true"));
+    command(&b, "RUN"); CHECK(!b.link_timeout);
+    for (int i = 1; i <= 10; ++i) {
+        int64_t now = 12000000 + (int64_t)i * 4000000;
+        CHECK(!bench_check_link(&b, now)); bench_keepalive(&b, now);
+    }
+    CHECK(b.running && b.link_timeout_count == 1);
+    command(&b, "STOP");
     Dac8568 d; CHECK(dac8568_init(&d, DAC_MOCK) == ESP_OK);
     CHECK(spi_calls == 0 && d.last_frame == 0x08000001);
     for (unsigned ch = 0; ch < 8; ++ch) {

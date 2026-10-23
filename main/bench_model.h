@@ -23,9 +23,16 @@ typedef struct {
     float grade_percent;
     bool brake, running;
     BenchFault fault;
+    int64_t last_contact_us;
+    bool link_timeout;
+    uint32_t link_timeout_count;
 } VirtualBench;
 
+#define BENCH_LINK_TIMEOUT_MS 5000
 void bench_init(VirtualBench *b);
+void bench_keepalive(VirtualBench *b, int64_t now_us);
+/* Monotonic elapsed time, independent of model integration/scheduler clamp. */
+bool bench_check_link(VirtualBench *b, int64_t now_us);
 void bench_step(VirtualBench *b, float dt);
 float bench_effective_cadence(const VirtualBench *b);
 float bench_effective_torque(const VirtualBench *b);

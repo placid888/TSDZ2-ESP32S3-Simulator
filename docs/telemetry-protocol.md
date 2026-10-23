@@ -61,3 +61,10 @@ preserves the new value for restoration. `STOP` clears the fault to `NONE`.
 PAS loss and zero torque do **not** cut the fake PWM drive: controller assistance
 logic remains outside this model until its actual behavior is established.
 Model signals and mock codes refresh on the next model tick (normally 10 ms).
+## 通訊中斷自動停止（link watchdog）
+
+ESP32 在 RUNNING 時若連續 5000 ms 未收到有效完整指令，會在模型工作迴圈自動執行 STOP：PWM、轉速、電流、邏輯訊號及故障清除，DAC 八通道歸零。計時使用 ESP32 單調時鐘，不受模型 dt 上限影響。有效 SET/RUN/STOP/STATUS/TELEMETRY 更新通訊時間；錯誤、過長或不完整指令不更新。
+
+TELEMETRY 增加 `watchdog_ms:5000`、`link_timeout:boolean`、`link_timeout_count:number`。逾時標記保留至下一次明確 RUN；普通查詢、STOP 或重新連線不會清除標記或重新啟動。次數每次開機歸零。RUN 時 PWM 已歸零，必須重新設定後才有驅動。
+
+PC 服務會持續查詢 ESP32，所以只關閉網頁不會觸發停止；應使用 STOP。手動串口操作時也須在 5 秒內送出有效查詢以維持運轉。此機制屬於模型韌體功能，尚未接入實體 STM8/DAC 感測器電路。

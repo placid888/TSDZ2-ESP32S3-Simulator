@@ -30,6 +30,7 @@ static void model_task(void *arg) {
         xSemaphoreTake(mutex, portMAX_DELAY);
         /* Clamp long scheduler gaps so model integration stays bounded. */
         dt = fminf(dt, 0.1f);
+        if (bench_check_link(&bench, now)) ESP_ERROR_CHECK(dac8568_zero(&dac));
         bench_step(&bench, dt);
         if (dac.mode == DAC_MOCK && bench.running) {
             dac8568_write(&dac, DAC_BATTERY_CURRENT, preview_code(bench.motor.current_a, 40));
@@ -55,10 +56,14 @@ static void console_task(void *arg) {
                 char verb[16], extra[2];
                 bool telemetry = sscanf(line, "%15s %1s", verb, extra) == 1 && !strcmp(verb, "TELEMETRY");
                 const char *backend = dac.mode == DAC_MOCK ? "mock" : dac.mode == DAC_SPI ? "spi-zero-only" : "disabled";
+                if (bench_check_link(&bench, esp_timer_get_time())) ESP_ERROR_CHECK(dac8568_zero(&dac));
+                bool valid = false;
                 if (telemetry) {
-                    if (!bench_telemetry(&bench, backend, dac.codes, reply, sizeof(reply)))
+                    valid = bench_telemetry(&bench, backend, dac.codes, reply, sizeof(reply));
+                    if (!valid)
                         snprintf(reply, sizeof(reply), "ERR telemetry buffer");
-                } else bench_command(&bench, line, reply, sizeof(reply));
+                } else valid = bench_command(&bench, line, reply, sizeof(reply));
+                if (valid) bench_keepalive(&bench, esp_timer_get_time());
                 if (!bench.running) ESP_ERROR_CHECK(dac8568_zero(&dac));
                 puts(reply);
                 if (!strncmp(line, "STATUS", 6)) {
