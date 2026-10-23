@@ -283,7 +283,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif path == '/api/fault':
                     LINK.fault(data.get('fault'))
                 elif path == '/api/test/start':
-                    RUNNER.start(data.get('kind','sequence'),data.get('sweep'))
+                    RUNNER.start(data.get('kind','sequence'),data.get('sweep'),data.get('cycles',5))
                 elif path == '/api/test/cancel':
                     RUNNER.cancel()
                     LINK.command('STOP')

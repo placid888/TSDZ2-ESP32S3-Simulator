@@ -18,6 +18,7 @@ function enabled(){
   const active=!!state?.test?.active, ok=!!state?.connected&&!state.stale&&!busy&&!active;
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
   $('connect').disabled=busy||active;$('ports').disabled=!!state?.connected||busy;
+  $('enduranceStart').disabled=!ok;$('enduranceCancel').disabled=!active||busy;$('enduranceCycles').disabled=active;
   $('testStart').disabled=!ok;$('testCancel').disabled=!active||busy;
   $('sweepStart').disabled=!ok;$('sweepCancel').disabled=!active||busy;
   const faultReady=ok&&state?.telemetry?.fault_api===1;
@@ -54,6 +55,8 @@ $('testStart').onclick=()=>action('test/start',{},'自動測試已開始，完�
 $('testCancel').onclick=()=>action('test/cancel',{},'已要求中止並送出 STOP，等待停止確認。');
 $('faultTest').onclick=()=>action('test/start',{kind:'faults'},'故障測試已開始；結束會清除故障並停止裝置。');
 $('faultCancel').onclick=$('testCancel').onclick;
+$('enduranceCancel').onclick=$('testCancel').onclick;
+$('enduranceForm').onsubmit=e=>{e.preventDefault();action('test/start',{kind:'endurance',cycles:Number($('enduranceCycles').value)},'循環測試已開始，每次結束會確認停止。');};
 const faultNames={NONE:'正常',PAS_LOSS:'踏頻中斷',TORQUE_ZERO:'扭力歸零',BRAKE_STUCK:'煞車卡住'};
 for(const button of document.querySelectorAll('[data-fault]'))button.onclick=()=>action('fault',{fault:button.dataset.fault},button.dataset.fault==='NONE'?'模型故障已解除；原設定保留。':`已注入模型故障：${faultNames[button.dataset.fault]}。`);
 function renderFault(t){
@@ -124,6 +127,7 @@ function renderSweep(test){
 }
 function renderTest(test){
   const r=test?.report;
+  $('enduranceProgress').textContent=r?.kind==='endurance'?`${test.active?r.step:r.status.toUpperCase()} · 已完成 ${r.completed_cycles}/${r.total_cycles} 次 · ${r.steps.length}/${r.total_checks} 項檢查${test.active?'':' · 停止'+(r.stop_confirmed?'已確認':'未確認')}`:'尚未執行；結果會保存至歷史報告。';
   $('testDownload').hidden=!r||test.active;
   if(!r)return;
   const labels={running:'RUNNING',cancelling:'STOPPING',passed:'PASS',failed:'FAIL',cancelled:'CANCELLED'};

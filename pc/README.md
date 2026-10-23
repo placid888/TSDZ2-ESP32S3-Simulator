@@ -167,3 +167,10 @@ CSV 新增 fault、effective_cadence_rpm、effective_torque_nm、effective_brake
 控制台下方可重新讀取 `pc/reports/` 已保存報告，按時間由新到舊列出，選擇後顯示 PASS/FAIL/CANCELLED、停止確認、各檢查與掃描測點，並可下載原始 JSON。檢視不會執行測試或改變 ESP32 設定，服務重啟後仍可查閱。新測試完成後按「重新讀取報告」。
 
 `GET /api/reports` 列出報告摘要；`GET /api/reports/<id>` 讀取完整報告。只接受程式產生的時間戳記檔名、schema 1 與已結束的狀態，拒絕路徑跳脫、符號連結、超過 5 MB 或無效 JSON；清單顯示略過的檔案數。報告仍留在本機並由 Git 忽略。
+## 連續循環測試
+
+控制台可指定 1–20 次（預設 5 次），每次沿用標準起步、爬坡、煞車、停止流程，約 12 秒。每次先 STOP，套用 48 V / 80 RPM / 60 Nm / PWM 40% / GRADE 0 / BRAKE 0，再 RUN；每次有四項檢查。任一失敗立即終止後續循環並執行 STOP 清理，中止同樣不會重新啟動下一次。
+
+POST `/api/test/start` 範例：`{"kind":"endurance","cycles":3}`。cycles 必須是整數，拒絕布林、小數、字串與超限值。報告含 total_cycles、current_cycle、completed_cycles、total_checks，逐項結果與採樣步驟附循環編號。只有四項檢查都通過才計入已完成次數；最終是否成功仍以 status 與 stop_confirmed 為準。
+
+完成後按「重新讀取報告」可找回整次測試。此功能只驗證 ESP32 模型反覆運轉，並非實體電機、DAC 或 STM8 的長時間耐久測試。

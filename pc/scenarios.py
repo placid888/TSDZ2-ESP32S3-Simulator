@@ -29,9 +29,11 @@ class ScenarioRunner:
                 report['sample_count'] = len(report.pop('samples'))
             return {'active': self.active, 'report': report}
 
-    def start(self, kind='sequence', sweep=None):
-        if kind not in ('sequence','sweep','faults'):
+    def start(self, kind='sequence', sweep=None, cycles=5):
+        if kind not in ('sequence','sweep','faults','endurance'):
             raise ValueError('不支援的測試類型')
+        if kind=='endurance' and (type(cycles) is not int or not 1 <= cycles <= 20):
+            raise ValueError('循環次數須為 1–20 的整數')
         plan, points = plan_sweep(sweep) if kind == 'sweep' else (None, [])
         with self.link.lock:
             if self.active:
@@ -46,7 +48,7 @@ class ScenarioRunner:
             self.cancel_event.clear()
             self.report = {'schema': 1, 'name': '起步 → 爬坡 → 煞車 → 停止',
                            'kind':kind, 'plan':plan, 'points':[], 'comparisons':[], 'total_points':len(points),
-                           'total_checks':8 if kind=='faults' else 4,
+                           'total_checks':4*cycles if kind=='endurance' else 8 if kind=='faults' else 4,
                            'status': 'running', 'started_at': time.time(), 'finished_at': None,
                            'port': self.link.port_name, 'protocol': t['protocol'],
                            'scope': 'ESP32 model / fake PWM / logical GPIO / DAC mock or disabled',
@@ -58,6 +60,8 @@ class ScenarioRunner:
                 self.report['parameters'] = {'CADENCE':80,'TORQUE':60,'BRAKE':0}
             elif kind == 'faults':
                 self.report['name'] = '模型故障注入 / 恢復 / 停止'
+            if kind=='endurance':
+                self.report.update(name=f'連續循環測試 · {cycles} 次', total_cycles=cycles, completed_cycles=0, current_cycle=0)
             self.link.event('開始自動測試：'+self.report['name'])
             self.worker = threading.Thread(target=self._run, daemon=True)
             self.worker.start()
@@ -81,6 +85,8 @@ class ScenarioRunner:
     def _stage(self, name, commands):
         with self.link.lock:
             self._check()
+            if self.report.get('kind')=='endurance':
+                name = f"循環 {self.report['current_cycle']}/{self.report['total_cycles']} · {name}"
             self.report['step'] = name
             self.link.event('自動測試：' + name)
             for command, values in commands:
@@ -117,6 +123,8 @@ class ScenarioRunner:
 
     def _result(self, name, criteria, passed, observed):
         with self.link.lock:
+            if self.report.get('kind')=='endurance':
+                name = f"循環 {self.report['current_cycle']} · {name}"
             self.report['steps'].append({'name':name, 'criteria':criteria,
                                          'passed':bool(passed), 'observed':observed})
         if not passed:
@@ -216,11 +224,21 @@ class ScenarioRunner:
                      stop['fault']=='NONE' and not stop['running'] and stop['rpm']==0
                      and stop['current_a']==0 and stop['pwm_percent']==0 and stop['dac_codes']==[0]*8,stop)
 
+    def _endurance(self):
+        for cycle in range(1,self.report['total_cycles']+1):
+            with self.link.lock:
+                self._check()
+                self.report['current_cycle']=cycle
+            self._sequence()
+            with self.link.lock:
+                self.report['completed_cycles']=cycle
+
     def _run(self):
         status, error = 'passed', None
         try:
             if self.report['kind']=='sweep': self._sweep()
             elif self.report['kind']=='faults': self._faults()
+            elif self.report['kind']=='endurance': self._endurance()
             else: self._sequence()
         except Cancelled as exc:
             status, error = 'cancelled', str(exc)
