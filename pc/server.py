@@ -206,6 +206,16 @@ class Handler(BaseHTTPRequestHandler):
             if not report:
                 return self.respond({'error':'尚無自動測試報告'}, 404)
             return self.respond(report)
+        if path == '/api/test/points.csv':
+            report = RUNNER.snapshot()['report']
+            if not report or report.get('kind')!='sweep':
+                return self.respond({'error':'尚無掃描結果'},404)
+            content = io.StringIO(newline='')
+            writer = csv.DictWriter(content,fieldnames=['voltage_v','pwm_percent','grade_percent','rpm','current_a','battery_v','passed'])
+            writer.writeheader()
+            writer.writerows({**{k:p[k] for k in ('voltage_v','pwm_percent','grade_percent','passed')},
+                              **{k:p['observed'][k] for k in ('rpm','current_a','battery_v')}} for p in report['points'])
+            return self.respond(content.getvalue(),kind='text/csv; charset=utf-8')
         if path == "/api/ports":
             return self.respond([{"device": p.device, "description": p.description} for p in list_ports.comports()])
         if path == "/api/export.csv":
@@ -250,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
                         RUNNER.cancel()
                     LINK.command(data.get("command"))
                 elif path == '/api/test/start':
-                    RUNNER.start()
+                    RUNNER.start(data.get('kind','sequence'),data.get('sweep'))
                 elif path == '/api/test/cancel':
                     RUNNER.cancel()
                     LINK.command('STOP')

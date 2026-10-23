@@ -19,7 +19,9 @@ function enabled(){
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
   $('connect').disabled=busy||active;$('ports').disabled=!!state?.connected||busy;
   $('testStart').disabled=!ok;$('testCancel').disabled=!active||busy;
+  $('sweepStart').disabled=!ok;$('sweepCancel').disabled=!active||busy;
   for(const input of $('settings').querySelectorAll('input'))input.disabled=active;
+  for(const input of $('sweepForm').querySelectorAll('input'))input.disabled=active;
   for(const button of document.querySelectorAll('[data-preset]'))button.disabled=active;
 }
 async function action(path,data,success){
@@ -47,6 +49,62 @@ $('stop').onclick=()=>action('command',{command:'STOP'},'ESP32 已停止：PWM�
 $('brake').onclick=()=>action('settings',{settings:{BRAKE:state?.telemetry?.brake?0:1}},state?.telemetry?.brake?'煞車已解除。':'煞車已啟用，驅動電流歸零。');
 $('testStart').onclick=()=>action('test/start',{},'自動測試已開始，完成後會自動停止裝置。');
 $('testCancel').onclick=()=>action('test/cancel',{},'已要求中止並送出 STOP，等待停止確認。');
+$('sweepCancel').onclick=$('testCancel').onclick;
+function sweepConfig(){
+  const parse=id=>{const text=$(id).value.trim();const values=text?text.split(/[,，\s]+/).filter(Boolean).map(Number):[];if(values.some(v=>!Number.isFinite(v)))throw new Error('掃描清單須為數字，以逗號分隔');return values;};
+  return {voltages:parse('sweepVoltages'),pwms:parse('sweepPwms'),grades:parse('sweepGrades'),hold_s:Number($('sweepHold').value)};
+}
+$('sweepForm').onsubmit=e=>{e.preventDefault();try{action('test/start',{kind:'sweep',sweep:sweepConfig()},'掃描已開始；結束或中止後會確認裝置停止。');}catch(err){notice(err.message,true);}};
+for(const input of $('sweepForm').querySelectorAll('input'))input.oninput=()=>{try{const p=sweepConfig(),n=p.voltages.length*p.pwms.length*p.grades.length;$('sweepEstimate').textContent=`${n} 組測點 · 採樣共 ${n*p.hold_s} 秒，另加指令時間（上限 36 組）`;}catch(e){$('sweepEstimate').textContent=e.message;}};
+let sweepReport=null, sweepSignature='';
+const sweepColors=['#9ce4bc','#ffb780','#91bcf6','#dcaff4','#f4d77b','#83d7dc'];
+function comparePlot(id,points,key){
+  const svg=$(id),w=600,h=170,l=43,r=15,top=12,bottom=28;
+  svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.setAttribute('preserveAspectRatio','none');
+  const max=Math.max(1,...points.map(p=>p.observed[key]*1.15));
+  const x=p=>l+p/100*(w-l-r),y=v=>h-bottom-v/max*(h-top-bottom);
+  let body=`<path d="M${l} ${top}H${w-r}M${l} ${y(max/2)}H${w-r}M${l} ${h-bottom}H${w-r}" stroke="#30413b" fill="none" stroke-dasharray="3 5"/><text x="2" y="${top+5}" fill="#8ca797" font-size="10">${max.toFixed(1)}</text><text x="2" y="${h-bottom}" fill="#8ca797" font-size="10">0</text>`;
+  for(const tick of [0,20,40,60,80,100])body+=`<text x="${x(tick)}" y="${h-8}" text-anchor="middle" fill="#8ca797" font-size="10">${tick}%</text>`;
+  const volts=sweepReport.plan.voltages;
+  for(let i=0;i<volts.length;i++){
+    const line=points.filter(p=>p.voltage_v===volts[i]).sort((a,b)=>a.pwm_percent-b.pwm_percent),color=sweepColors[i];
+    body+=`<polyline points="${line.map(p=>x(p.pwm_percent)+','+y(p.observed[key])).join(' ')}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+    for(const p of line)body+=`<circle cx="${x(p.pwm_percent)}" cy="${y(p.observed[key])}" r="3" fill="${color}"><title>${p.voltage_v} V / PWM ${p.pwm_percent}%: ${p.observed[key].toFixed(2)}</title></circle>`;
+  }
+  svg.innerHTML=body;
+}
+function drawSweep(){
+  if(!sweepReport)return;
+  const points=sweepReport.points.filter(p=>p.grade_percent===Number($('sweepGradeView').value));
+  comparePlot('sweepRpm',points,'rpm');comparePlot('sweepCurrent',points,'current_a');comparePlot('sweepVoltage',points,'battery_v');
+}
+$('sweepGradeView').onchange=drawSweep;
+function renderSweep(test){
+  const r=test?.report;if(r?.kind!=='sweep'){
+    sweepReport=null;sweepSignature='';$('sweepData').hidden=true;$('sweepCsv').hidden=$('sweepJson').hidden=true;
+    $('sweepBadge').textContent='READY';return;
+  }
+  sweepReport=r;$('sweepData').hidden=!r.points.length;
+  $('sweepCsv').hidden=$('sweepJson').hidden=test.active;
+  $('sweepBadge').textContent=({running:'RUNNING',cancelling:'STOPPING',passed:'PASS',failed:'FAIL',cancelled:'CANCELLED'})[r.status];
+  $('sweepBadge').style.color=r.status==='failed'?'var(--orange)':r.status==='cancelled'?'var(--muted)':'var(--green)';
+  const passed=r.comparisons.filter(c=>c.passed).length;
+  const trends=r.comparisons.length?`${passed}/${r.comparisons.length}`:'未比較（組合不足）';
+  $('sweepProgress').textContent=test.active?`${r.step} · 已完成 ${r.points.length}/${r.total_points} 點`:
+    `${r.status.toUpperCase()} · ${r.points.length}/${r.total_points} 點 · 趨勢檢查 ${trends} · 停止${r.stop_confirmed?'已確認':'未確認'}${r.error?' · '+r.error:''}`;
+  const signature=r.started_at+':'+r.points.length;
+  if(signature===sweepSignature)return;
+  sweepSignature=signature;
+  const selected=$('sweepGradeView').value;
+  if($('sweepGradeView').dataset.plan!==JSON.stringify(r.plan.grades)){
+    $('sweepGradeView').dataset.plan=JSON.stringify(r.plan.grades);$('sweepGradeView').replaceChildren();
+    for(const g of r.plan.grades){const opt=document.createElement('option');opt.value=g;opt.textContent=g+'%';$('sweepGradeView').append(opt);}
+    if(selected!==''&&r.plan.grades.includes(Number(selected)))$('sweepGradeView').value=selected;
+  }
+  $('sweepLegend').replaceChildren();r.plan.voltages.forEach((v,i)=>{const label=document.createElement('span');label.textContent='● '+v+' V';label.style.color=sweepColors[i];$('sweepLegend').append(label);});
+  $('sweepRows').replaceChildren();for(const p of r.points){const row=document.createElement('tr');for(const value of [p.voltage_v,p.pwm_percent,p.grade_percent,p.observed.rpm.toFixed(1),p.observed.current_a.toFixed(2),p.observed.battery_v.toFixed(2),p.passed?'PASS':'FAIL']){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}$('sweepRows').append(row);}
+  drawSweep();
+}
 function renderTest(test){
   const r=test?.report;
   $('testDownload').hidden=!r||test.active;
@@ -63,6 +121,7 @@ function renderTest(test){
   $('testProgress').textContent=test.active?`目前步驟：${r.step} · ${elapsed} 秒 · 已完成 ${r.steps.length}/4 項驗證`:
     `${labels[r.status]} · ${elapsed} 秒 · 停止${r.stop_confirmed?'已確認':'未確認'}${r.error?' · '+r.error:''}${r.save_error?' · 報告未寫入磁碟，請下載保留':''}`;
   $('testResults').replaceChildren();
+  if(r.kind==='sweep'){$('testProgress').textContent=`目前為掃描測試 · ${elapsed} 秒 · ${r.points.length}/${r.total_points} 點，結果見下方比較圖`;return;}
   for(const step of r.steps){
     const row=document.createElement('div');row.className='test-result'+(step.passed?'':' fail');
     const badge=document.createElement('b');badge.textContent=step.passed?'PASS':'FAIL';
@@ -88,6 +147,7 @@ function render(s){
   if(transportError){notice(s.connected?'PC 服務已恢復，裝置數據已更新。':'PC 服務已恢復，請連接 ESP32。');transportError=false;}
   state=s;const t=s.telemetry,ok=s.connected&&!s.stale;
   renderTest(s.test);
+  renderSweep(s.test);
   $('linkBadge').textContent=s.connected?(s.stale?'● 數據過期':`● 已連接 ${s.port}`):'● 尚未連線';$('linkBadge').className='badge'+(ok?' online':'');
   $('connect').textContent=s.connected?'中斷連線':'連接裝置';
   $('sampleAge').textContent=s.age_s==null?'等待數據':`更新 ${s.age_s.toFixed(1)} 秒前`;

@@ -5,6 +5,7 @@ import statistics
 import threading
 import time
 from pathlib import Path
+from sweep import plan_sweep, trend_checks
 
 
 class Cancelled(Exception):
@@ -28,7 +29,10 @@ class ScenarioRunner:
                 report['sample_count'] = len(report.pop('samples'))
             return {'active': self.active, 'report': report}
 
-    def start(self):
+    def start(self, kind='sequence', sweep=None):
+        if kind not in ('sequence','sweep'):
+            raise ValueError('不支援的測試類型')
+        plan, points = plan_sweep(sweep) if kind == 'sweep' else (None, [])
         with self.link.lock:
             if self.active:
                 raise ValueError('自動測試已在執行')
@@ -39,13 +43,17 @@ class ScenarioRunner:
             self.active = True
             self.cancel_event.clear()
             self.report = {'schema': 1, 'name': '起步 → 爬坡 → 煞車 → 停止',
+                           'kind':kind, 'plan':plan, 'points':[], 'comparisons':[], 'total_points':len(points),
                            'status': 'running', 'started_at': time.time(), 'finished_at': None,
                            'port': self.link.port_name, 'protocol': t['protocol'],
                            'scope': 'ESP32 model / fake PWM / logical GPIO / DAC mock or disabled',
                            'parameters': {'BATTERY':48,'CADENCE':80,'TORQUE':60,'PWM':40,'GRADE':0,'BRAKE':0},
                            'step': '準備', 'steps': [], 'samples': [], 'stop_confirmed': False,
                            'error': None, 'saved': False, 'save_error': None}
-            self.link.event('開始自動測試：起步 / 爬坡 / 煞車 / 停止')
+            if kind == 'sweep':
+                self.report['name'] = '電壓 / PWM / 坡度掃描'
+                self.report['parameters'] = {'CADENCE':80,'TORQUE':60,'BRAKE':0}
+            self.link.event('開始自動測試：'+self.report['name'])
             self.worker = threading.Thread(target=self._run, daemon=True)
             self.worker.start()
 
@@ -107,27 +115,56 @@ class ScenarioRunner:
         if not passed:
             raise ValueError(name + ' 未達預期')
 
+    def _sweep(self):
+        plan, points = plan_sweep(self.report['plan'])
+        for index, point in enumerate(points):
+            name = f"掃描 {index+1}/{len(points)} · {point['voltage_v']:g} V / PWM {point['pwm_percent']:g}% / 坡度 {point['grade_percent']:g}%"
+            settings = {**self.report['parameters'], 'BATTERY':point['voltage_v'],
+                        'PWM':point['pwm_percent'], 'GRADE':point['grade_percent']}
+            self._stage(name,[('STOP',None), ('SET',settings), ('RUN',None)])
+            observed = self._measure(plan['hold_s'])
+            with self.link.lock:
+                self._check()
+                t = self.link.telemetry
+                echoed = (abs(t['battery_open_circuit_v']-point['voltage_v'])<.01
+                          and abs(t['grade_percent']-point['grade_percent'])<.01
+                          and abs(t['pwm_percent']-point['pwm_percent'])<.01
+                          and t['running'] and not t['brake'])
+                valid = (echoed and 0 <= observed['battery_v'] <= point['voltage_v']+.01
+                         and observed['current_a']>=0 and observed['rpm']>=0
+                         and (observed['rpm']>0 if point['pwm_percent']>0 else observed['rpm']==0))
+                self.report['points'].append({**point, 'observed':observed, 'passed':valid})
+            self._result(name,'設定回報相符、電壓/電流/轉速有效；PWM>0 有轉速，PWM=0 為零',valid,observed)
+        with self.link.lock:
+            checks = trend_checks(self.report['points'])
+            self.report['comparisons'] = checks
+            if any(not c['passed'] for c in checks):
+                raise ValueError('掃描趨勢未達模型預期，請查看比較結果')
+
+    def _sequence(self):
+        self._stage('起步', [('STOP',None), ('SET',self.report['parameters']), ('RUN',None)])
+        flat = self._measure(5)
+        self._result('起步與壓降', 'RPM > 500、電流 > 0.1 A、電壓 < 47.9 V',
+                     flat['rpm']>500 and flat['current_a']>.1 and flat['battery_v']<47.9, flat)
+        self._stage('爬坡', [('SET',{'GRADE':15})])
+        hill = self._measure(5)
+        self._result('爬坡負載', 'RPM < 平路的 90%、電流 > 平路 + 0.3 A',
+                     hill['rpm']<flat['rpm']*.9 and hill['current_a']>flat['current_a']+.3, hill)
+        self._stage('煞車', [('SET',{'BRAKE':1})])
+        brake = self._measure(1.5)
+        self._result('煞車', '電流 ≤ 0.01 A、RPM < 爬坡的 20%',
+                     brake['current_a']<=.01 and brake['rpm']<hill['rpm']*.2, brake)
+        self._stage('停止', [('STOP',None)])
+        with self.link.lock:
+            stopped = copy.deepcopy(self.link.telemetry)
+        self._result('停止與 DAC 歸零', 'running=false、RPM/電流/PWM=0、DAC 8ch=0',
+                     not stopped['running'] and stopped['rpm']==0 and stopped['current_a']==0
+                     and stopped['pwm_percent']==0 and stopped['dac_codes']==[0]*8, stopped)
+
     def _run(self):
         status, error = 'passed', None
         try:
-            self._stage('起步', [('STOP',None), ('SET',self.report['parameters']), ('RUN',None)])
-            flat = self._measure(5)
-            self._result('起步與壓降', 'RPM > 500、電流 > 0.1 A、電壓 < 47.9 V',
-                         flat['rpm']>500 and flat['current_a']>.1 and flat['battery_v']<47.9, flat)
-            self._stage('爬坡', [('SET',{'GRADE':15})])
-            hill = self._measure(5)
-            self._result('爬坡負載', 'RPM < 平路的 90%、電流 > 平路 + 0.3 A',
-                         hill['rpm']<flat['rpm']*.9 and hill['current_a']>flat['current_a']+.3, hill)
-            self._stage('煞車', [('SET',{'BRAKE':1})])
-            brake = self._measure(1.5)
-            self._result('煞車', '電流 ≤ 0.01 A、RPM < 爬坡的 20%',
-                         brake['current_a']<=.01 and brake['rpm']<hill['rpm']*.2, brake)
-            self._stage('停止', [('STOP',None)])
-            with self.link.lock:
-                stopped = copy.deepcopy(self.link.telemetry)
-            self._result('停止與 DAC 歸零', 'running=false、RPM/電流/PWM=0、DAC 8ch=0',
-                         not stopped['running'] and stopped['rpm']==0 and stopped['current_a']==0
-                         and stopped['pwm_percent']==0 and stopped['dac_codes']==[0]*8, stopped)
+            self._sweep() if self.report['kind']=='sweep' else self._sequence()
         except Cancelled as exc:
             status, error = 'cancelled', str(exc)
         except Exception as exc:
@@ -139,7 +176,7 @@ class ScenarioRunner:
                 try:
                     self.link.command('STOP')
                     t = self.link.telemetry
-                    self.report['stop_confirmed'] = not t['running'] and t['rpm']==0 and t['pwm_percent']==0 and t['dac_codes']==[0]*8
+                    self.report['stop_confirmed'] = not t['running'] and t['rpm']==0 and t['current_a']==0 and t['pwm_percent']==0 and t['dac_codes']==[0]*8
                     if not self.report['stop_confirmed']:
                         raise ValueError('裝置停止狀態未歸零')
                 except Exception as exc:
