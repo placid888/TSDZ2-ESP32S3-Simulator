@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 import serial
 from serial.tools import list_ports
 from scenarios import ScenarioRunner
+from report_store import ReportStore
 
 RANGES = {"BATTERY": (0, 60), "CADENCE": (0, 200), "TORQUE": (0, 200),
           "GRADE": (-30, 30), "PWM": (0, 100), "BRAKE": (0, 1)}
@@ -182,6 +183,7 @@ class BenchLink:
 
 LINK = BenchLink()
 RUNNER = ScenarioRunner(LINK)
+REPORTS = ReportStore(RUNNER.reports)
 STATIC = Path(__file__).with_name("web")
 
 
@@ -211,6 +213,13 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path == '/api/reports':
+            return self.respond(REPORTS.listing())
+        if path.startswith('/api/reports/'):
+            try:
+                return self.respond(REPORTS.read(path[len('/api/reports/'):]))
+            except (OSError, ValueError, TypeError):
+                return self.respond({'error':'報告不存在或格式無效'},404)
         if path == "/api/state":
             return self.respond({**LINK.snapshot(), 'test': RUNNER.snapshot()})
         if path == "/api/test/report":

@@ -203,3 +203,39 @@ function render(s){
 }
 async function poll(){try{render(await api('state'));}catch(e){transportError=true;if(state){state.connected=false;state.stale=true;enabled();}$('linkBadge').textContent='● PC 服務無回應';$('rotor').style.animationPlayState='paused';notice('PC 服務無回應，請重新啟動控制台。',true);}finally{setTimeout(poll,500);}}
 ports();poll();
+
+let historyRequest=0;
+async function loadHistory(){
+  const selected=$('historySelect').value;
+  $('historyRefresh').disabled=true;
+  try{
+    const data=await api('reports');
+    $('historySelect').replaceChildren(new Option('請選擇報告',''));
+    for(const r of data.reports){
+      const date=new Date(r.started_at*1000).toLocaleString('zh-TW',{hour12:false});
+      $('historySelect').append(new Option(`${date} · ${r.status.toUpperCase()} · ${r.name}`,r.id));
+    }
+    $('historyMessage').textContent=`共 ${data.reports.length} 份報告`+(data.skipped?`；略過 ${data.skipped} 份無效檔案`:'');
+    if(data.reports.some(r=>r.id===selected))$('historySelect').value=selected;
+    else{$('historyDetail').hidden=true;historyRequest++;}
+  }catch(e){$('historyMessage').textContent=e.message;}
+  finally{$('historyRefresh').disabled=false;}
+}
+$('historyRefresh').onclick=loadHistory;
+$('historySelect').onchange=async()=>{
+  const id=$('historySelect').value,request=++historyRequest;
+  $('historyDetail').hidden=true;if(!id)return;
+  try{
+    const r=await api('reports/'+encodeURIComponent(id));
+    if(request!==historyRequest)return;
+    $('historySummary').textContent=`${r.name} · ${r.status.toUpperCase()} · 停止${r.stop_confirmed?'已確認':'未確認'}${r.error?' · '+r.error:''}`;
+    $('historyDownload').href='/api/reports/'+encodeURIComponent(id);
+    $('historyDownload').download=id;
+    $('historyRows').replaceChildren();
+    const rows=[...(r.steps||[]).map(s=>`${s.passed?'PASS':'FAIL'} · ${s.name} · ${s.criteria}${s.observed?' · 實測 '+Number(s.observed.rpm).toFixed(1)+' RPM / '+Number(s.observed.current_a).toFixed(2)+' A / '+Number(s.observed.battery_v).toFixed(2)+' V':''}`),
+      ...(r.points||[]).map(p=>`${p.passed?'PASS':'FAIL'} · ${p.voltage_v} V / PWM ${p.pwm_percent}% / 坡度 ${p.grade_percent}% · ${Number(p.observed.rpm).toFixed(1)} RPM / ${Number(p.observed.current_a).toFixed(2)} A`)];
+    for(const text of rows){const row=document.createElement('p');row.textContent=text;$('historyRows').append(row);}
+    $('historyDetail').hidden=false;
+  }catch(e){if(request===historyRequest)$('historyMessage').textContent=e.message;}
+};
+loadHistory();

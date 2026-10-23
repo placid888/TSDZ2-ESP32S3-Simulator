@@ -8,3 +8,5 @@
 .fault-buttons button[data-fault="NONE"].active{border-color:#62866d;color:var(--green);background:#253a2d}
 
 .dac-preview-settings{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:15px 0;font-size:12px}.dac-preview-settings select{max-width:100%;padding:8px}.channel meter{display:block;width:100%;height:8px;margin-top:8px}.channel small{display:block;line-height:1.6}
+
+.history select{display:block;width:100%;max-width:100%;margin:12px 0;padding:10px}.history label,.history p{font-size:12px;line-height:1.8}.history-rows{max-height:300px;overflow:auto;margin-top:14px}.history-rows p{border-top:1px solid var(--line);padding:9px 0}.history a{display:inline-block;margin:8px 0}

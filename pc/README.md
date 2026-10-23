@@ -161,3 +161,9 @@ CSV 新增 fault、effective_cadence_rpm、effective_torque_nm、effective_brake
 資料過期時標示舊資料。STOP 後八通道歸零。比例模型仍是 CH1 40 A、CH2 200 Nm、CH3 60 V；CH4–8 保持零。SPI 目前仍為 zero-only。
 
 依據：[TI DAC8568 datasheet](https://www.ti.com/lit/ds/symlink/dac8568.pdf)。硬體到貨後先記錄完整型號、供電與參考電壓，再量測零點、中點、滿量程附近；尚不填入 STM8 pin mapping。
+
+## 歷史報告
+
+控制台下方可重新讀取 `pc/reports/` 已保存報告，按時間由新到舊列出，選擇後顯示 PASS/FAIL/CANCELLED、停止確認、各檢查與掃描測點，並可下載原始 JSON。檢視不會執行測試或改變 ESP32 設定，服務重啟後仍可查閱。新測試完成後按「重新讀取報告」。
+
+`GET /api/reports` 列出報告摘要；`GET /api/reports/<id>` 讀取完整報告。只接受程式產生的時間戳記檔名、schema 1 與已結束的狀態，拒絕路徑跳脫、符號連結、超過 5 MB 或無效 JSON；清單顯示略過的檔案數。報告仍留在本機並由 Git 忽略。
