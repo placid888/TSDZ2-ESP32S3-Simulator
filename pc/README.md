@@ -125,3 +125,31 @@ API：`POST /api/test/start`，JSON 範例：
 原有 `{}` 或 `{"kind":"sequence"}` 仍執行約 13 秒的標準測試。
 `GET /api/test/points.csv` 匯出最新掃描摘要；不是掃描報告時回傳 404。
 `POST /api/test/cancel` 與 STOP 沿用原本中止、歸零確認與排他控制。
+
+## 模型故障注入（fault-v1）
+
+需燒入回報 `fault_api:1` 的新韌體。protocol 1 保持不變，新增欄位為向後相容擴充；
+PC 連舊版韌體時會停用故障操作，標準操作與掃描仍可使用。
+
+| 故障 | 模型作用 | 保留的設定 |
+|---|---|---|
+| PAS_LOSS | 有效踏頻與 PAS 頻率歸零 | 原踏頻 |
+| TORQUE_ZERO | 有效扭力與 mock CH2 歸零 | 原扭力 |
+| BRAKE_STUCK | 有效煞車強制啟用，驅動電流歸零並減速 | 原煞車設定 |
+| NONE | 解除模型故障，恢復有效輸入 | 全部設定 |
+
+一次一種故障。手動注入不會自動 RUN；解除故障時若模型仍運轉且 PWM>0，
+會依保留設定恢復反應。STOP 會清除故障、PWM、轉速、電流與 DAC code。
+踏頻/扭力中斷不會自行切斷 fake PWM，因為此模型還沒有接入真實 STM8 的助力邏輯。
+這是測試感測器刺激，**不代表已驗證實車故障保護**，沒有新增 STM8 故障碼。
+
+「故障與恢復測試」固定 48 V、80 RPM、60 Nm、坡度 0、PWM 40%、煞車解除，
+會自動啟動並驗證八項：正常基準、PAS 中斷/恢復、扭力歸零/恢復、
+煞車卡住/恢復、停止與清除故障。約 11 秒完成；結束後保持停止與 NONE。
+支援既有中止、資料逾期檢查、報告 JSON、完整採樣與排他控制。
+手動故障注入在任何自動測試期間會被拒絕，請使用 STOP 或中止。
+
+API：`POST /api/fault`，JSON `{"fault":"PAS_LOSS"}`（其他值見表格）；
+`POST /api/test/start`，JSON `{"kind":"faults"}` 啟動八項測試。
+CSV 新增 fault、effective_cadence_rpm、effective_torque_nm、effective_brake 欄位。
+既有 cadence_rpm、torque_nm、brake 仍表示原設定，UI 同時顯示有效輸入。

@@ -28,12 +28,12 @@ static void model_task(void *arg) {
         float dt = (now - previous) / 1000000.0f;
         previous = now;
         xSemaphoreTake(mutex, portMAX_DELAY);
-        /* Split long scheduler gaps so model integration stays bounded. */
+        /* Clamp long scheduler gaps so model integration stays bounded. */
         dt = fminf(dt, 0.1f);
         bench_step(&bench, dt);
         if (dac.mode == DAC_MOCK && bench.running) {
             dac8568_write(&dac, DAC_BATTERY_CURRENT, preview_code(bench.motor.current_a, 40));
-            dac8568_write(&dac, DAC_TORQUE, preview_code(bench.rider.torque_nm, 200));
+            dac8568_write(&dac, DAC_TORQUE, preview_code(bench_effective_torque(&bench), 200));
             dac8568_write(&dac, DAC_BATTERY_VOLTAGE, preview_code(bench.battery.terminal_v, 60));
             dac8568_write(&dac, DAC_THROTTLE, 0);
         }
@@ -41,7 +41,7 @@ static void model_task(void *arg) {
     }
 }
 static void console_task(void *arg) {
-    char line[128], reply[768];
+    char line[128], reply[1024];
     size_t used = 0;
     bool overflow = false;
     while (1) {

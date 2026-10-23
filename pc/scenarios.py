@@ -30,7 +30,7 @@ class ScenarioRunner:
             return {'active': self.active, 'report': report}
 
     def start(self, kind='sequence', sweep=None):
-        if kind not in ('sequence','sweep'):
+        if kind not in ('sequence','sweep','faults'):
             raise ValueError('不支援的測試類型')
         plan, points = plan_sweep(sweep) if kind == 'sweep' else (None, [])
         with self.link.lock:
@@ -40,10 +40,13 @@ class ScenarioRunner:
             t = self.link.telemetry
             if t.get('input') != 'fake' or t.get('gpio') != 'logical-only' or t.get('dac_backend') not in ('mock', 'disabled'):
                 raise ValueError('此流程僅適用 fake PWM、邏輯 GPIO 與 mock/disabled DAC')
+            if kind=='faults' and t.get('fault_api')!=1:
+                raise ValueError('裝置韌體尚未支援 fault-v1')
             self.active = True
             self.cancel_event.clear()
             self.report = {'schema': 1, 'name': '起步 → 爬坡 → 煞車 → 停止',
                            'kind':kind, 'plan':plan, 'points':[], 'comparisons':[], 'total_points':len(points),
+                           'total_checks':8 if kind=='faults' else 4,
                            'status': 'running', 'started_at': time.time(), 'finished_at': None,
                            'port': self.link.port_name, 'protocol': t['protocol'],
                            'scope': 'ESP32 model / fake PWM / logical GPIO / DAC mock or disabled',
@@ -53,6 +56,8 @@ class ScenarioRunner:
             if kind == 'sweep':
                 self.report['name'] = '電壓 / PWM / 坡度掃描'
                 self.report['parameters'] = {'CADENCE':80,'TORQUE':60,'BRAKE':0}
+            elif kind == 'faults':
+                self.report['name'] = '模型故障注入 / 恢復 / 停止'
             self.link.event('開始自動測試：'+self.report['name'])
             self.worker = threading.Thread(target=self._run, daemon=True)
             self.worker.start()
@@ -82,6 +87,8 @@ class ScenarioRunner:
                 self._check()
                 if command == 'SET':
                     self.link.apply(values)
+                elif command == 'FAULT':
+                    self.link.fault(values)
                 else:
                     self.link.command(command)
 
@@ -161,10 +168,60 @@ class ScenarioRunner:
                      not stopped['running'] and stopped['rpm']==0 and stopped['current_a']==0
                      and stopped['pwm_percent']==0 and stopped['dac_codes']==[0]*8, stopped)
 
+    def _fault_sample(self, seconds):
+        measured = self._measure(seconds)
+        with self.link.lock:
+            self._check()
+            return {**copy.deepcopy(self.link.telemetry),**measured}
+
+    def _faults(self):
+        self._stage('建立正常輸入',[('STOP',None),('SET',self.report['parameters']),('RUN',None)])
+        base = self._fault_sample(3)
+        self._result('正常基準','fault=NONE、PAS>0、有效扭力60 Nm、電流>0、RPM>500',
+                     base['fault']=='NONE' and base['pas_hz']>0 and base['effective_torque_nm']==60
+                     and base['current_a']>0 and base['rpm']>500,base)
+        self._stage('踏頻訊號中斷',[('FAULT','PAS_LOSS')])
+        pas = self._fault_sample(.75)
+        self._result('踏頻中斷','有效踏頻/PAS=0、原設定80 RPM不變；fake PWM仍為40%',
+                     pas['fault']=='PAS_LOSS' and pas['effective_cadence_rpm']==0 and pas['pas_hz']==0
+                     and pas['cadence_rpm']==80 and pas['pwm_percent']==40,pas)
+        self._stage('恢復踏頻',[('FAULT','NONE')])
+        restored = self._fault_sample(.75)
+        self._result('踏頻恢復','fault=NONE、有效踏頻80 RPM、PAS>0',
+                     restored['fault']=='NONE' and restored['effective_cadence_rpm']==80 and restored['pas_hz']>0,restored)
+        self._stage('扭力訊號歸零',[('FAULT','TORQUE_ZERO')])
+        torque = self._fault_sample(.75)
+        self._result('扭力歸零','有效扭力=0、CH2=0、原設定60 Nm不變',
+                     torque['fault']=='TORQUE_ZERO' and torque['effective_torque_nm']==0
+                     and torque['torque_nm']==60 and torque['dac_codes'][1]==0,torque)
+        self._stage('恢復扭力',[('FAULT','NONE')])
+        restored = self._fault_sample(.75)
+        dac_ok = restored['dac_backend']=='disabled' or restored['dac_codes'][1]>0
+        self._result('扭力恢復','有效扭力60 Nm；mock CH2>0（disabled不檢查非零碼）',
+                     restored['fault']=='NONE' and restored['effective_torque_nm']==60 and dac_ok,restored)
+        self._stage('煞車卡住',[('FAULT','BRAKE_STUCK')])
+        brake = self._fault_sample(1.5)
+        self._result('煞車卡住','有效煞車=true、原設定=false、電流=0、轉速低於正常的20%',
+                     brake['fault']=='BRAKE_STUCK' and brake['effective_brake'] and not brake['brake']
+                     and brake['current_a']==0 and brake['rpm']<restored['rpm']*.2,brake)
+        self._stage('解除煞車故障',[('FAULT','NONE')])
+        normal = self._fault_sample(2)
+        self._result('煞車恢復','有效煞車=false、電流>0、轉速>500',
+                     normal['fault']=='NONE' and not normal['effective_brake']
+                     and normal['current_a']>0 and normal['rpm']>500,normal)
+        self._stage('停止與清除故障',[('STOP',None)])
+        with self.link.lock:
+            stop = copy.deepcopy(self.link.telemetry)
+        self._result('停止與故障清除','fault=NONE、running=false、轉速/電流/PWM=0、DAC八通道=0',
+                     stop['fault']=='NONE' and not stop['running'] and stop['rpm']==0
+                     and stop['current_a']==0 and stop['pwm_percent']==0 and stop['dac_codes']==[0]*8,stop)
+
     def _run(self):
         status, error = 'passed', None
         try:
-            self._sweep() if self.report['kind']=='sweep' else self._sequence()
+            if self.report['kind']=='sweep': self._sweep()
+            elif self.report['kind']=='faults': self._faults()
+            else: self._sequence()
         except Cancelled as exc:
             status, error = 'cancelled', str(exc)
         except Exception as exc:
@@ -176,7 +233,7 @@ class ScenarioRunner:
                 try:
                     self.link.command('STOP')
                     t = self.link.telemetry
-                    self.report['stop_confirmed'] = not t['running'] and t['rpm']==0 and t['current_a']==0 and t['pwm_percent']==0 and t['dac_codes']==[0]*8
+                    self.report['stop_confirmed'] = not t['running'] and t['rpm']==0 and t['current_a']==0 and t['pwm_percent']==0 and t['dac_codes']==[0]*8 and t.get('fault','NONE')=='NONE'
                     if not self.report['stop_confirmed']:
                         raise ValueError('裝置停止狀態未歸零')
                 except Exception as exc:

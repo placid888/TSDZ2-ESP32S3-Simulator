@@ -31,5 +31,33 @@ retains its human-readable two-line output. A PC client must tolerate boot logs,
 blank lines, command replies, and unknown fields; only parse JSON objects with
 `type` equal to `telemetry` and `protocol` equal to 1 as dashboard snapshots.
 Only one command should be outstanding at a time because replies have no
-request identifiers. `STOP` clears PWM, motor state, signal outputs, and DAC
+request identifiers. `STOP` clears PWM, motor state, signal outputs, active fault, and DAC
 codes; it retains rider settings, battery setting, grade, and requested brake.
+
+## Fault injection extension (`fault_api: 1`)
+
+Protocol 1 telemetry adds `fault_api` (integer 1), `fault` (one of the names
+below), `effective_cadence_rpm`, `effective_torque_nm`, and `effective_brake`
+(boolean). Existing `cadence_rpm`, `torque_nm`, and `brake` always report the
+configured values. Effective values report sensor stimuli after fault injection;
+while stopped, signal outputs and DAC codes remain zero regardless of those
+configured or effective stimulus values. Clients can use `fault_api` to detect
+firmware support before offering fault controls.
+
+`SET FAULT <name>` selects exactly one fault and replies `OK`. Names are
+case-sensitive; unknown names, missing names, or extra tokens reply `ERR ...`
+without changing any state.
+
+| Name | Effect |
+| --- | --- |
+| `NONE` | All effective inputs use their configured values. |
+| `PAS_LOSS` | Effective cadence is zero; PAS frequency and logical PAS signal are zero. |
+| `TORQUE_ZERO` | Effective torque is zero; mock DAC CH2 becomes zero. |
+| `BRAKE_STUCK` | Effective brake is true; model drive current is zero and brake deceleration applies. |
+
+Faults preserve configured cadence, torque, and brake. Switching to `NONE`
+restores the latest configured values; changing a setting during a fault also
+preserves the new value for restoration. `STOP` clears the fault to `NONE`.
+PAS loss and zero torque do **not** cut the fake PWM drive: controller assistance
+logic remains outside this model until its actual behavior is established.
+Model signals and mock codes refresh on the next model tick (normally 10 ms).

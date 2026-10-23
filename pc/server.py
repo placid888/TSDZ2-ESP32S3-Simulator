@@ -18,7 +18,9 @@ from scenarios import ScenarioRunner
 RANGES = {"BATTERY": (0, 60), "CADENCE": (0, 200), "TORQUE": (0, 200),
           "GRADE": (-30, 30), "PWM": (0, 100), "BRAKE": (0, 1)}
 FIELDS = ["time", "running", "rpm", "current_a", "battery_v", "cadence_rpm",
-          "torque_nm", "grade_percent", "pwm_percent", "brake"]
+          "torque_nm", "grade_percent", "pwm_percent", "brake", "fault",
+          "effective_cadence_rpm", "effective_torque_nm", "effective_brake"]
+FAULTS = ('NONE','PAS_LOSS','TORQUE_ZERO','BRAKE_STUCK')
 
 
 def validate_settings(settings):
@@ -144,6 +146,16 @@ class BenchLink:
             self.event("ESP32 已確認 " + command)
             self._refresh()
 
+    def fault(self, name):
+        if name not in FAULTS:
+            raise ValueError('不支援的模型故障')
+        with self.lock:
+            if not self.telemetry or self.telemetry.get('fault_api') != 1:
+                raise ValueError('裝置韌體尚未支援 fault-v1')
+            self._line('SET FAULT '+name)
+            self._refresh()
+            self.event('模型故障 '+name)
+
     def snapshot(self):
         with self.lock:
             age = time.monotonic() - self.updated if self.updated else None
@@ -259,6 +271,8 @@ class Handler(BaseHTTPRequestHandler):
                             raise ValueError('自動測試進行中，僅接受 STOP')
                         RUNNER.cancel()
                     LINK.command(data.get("command"))
+                elif path == '/api/fault':
+                    LINK.fault(data.get('fault'))
                 elif path == '/api/test/start':
                     RUNNER.start(data.get('kind','sequence'),data.get('sweep'))
                 elif path == '/api/test/cancel':

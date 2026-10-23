@@ -4,6 +4,7 @@
 
 新增 [PC 即時控制台](pc/README.md)：連接 USB 串口後可調整情境、RUN／STOP／煞車，
 觀察實體 ESP32 回傳的轉速、電流、電池壓降曲線，並匯出 CSV。
+支援自動驗證、電壓/PWM/坡度掃描，以及 fault-v1 模型故障注入與恢復測試。
 
 新增可選的 **Virtual Bench** 模式：VirtualMotor、VirtualBattery、VirtualRider、
 SignalGenerator、fake ControllerInput、Serial CLI 與 DAC8568 mock/disabled/SPI driver。

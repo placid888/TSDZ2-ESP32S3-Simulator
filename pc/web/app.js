@@ -20,6 +20,9 @@ function enabled(){
   $('connect').disabled=busy||active;$('ports').disabled=!!state?.connected||busy;
   $('testStart').disabled=!ok;$('testCancel').disabled=!active||busy;
   $('sweepStart').disabled=!ok;$('sweepCancel').disabled=!active||busy;
+  const faultReady=ok&&state?.telemetry?.fault_api===1;
+  $('faultTest').disabled=!faultReady;$('faultCancel').disabled=!active||busy;
+  for(const button of document.querySelectorAll('[data-fault]'))button.disabled=!faultReady;
   for(const input of $('settings').querySelectorAll('input'))input.disabled=active;
   for(const input of $('sweepForm').querySelectorAll('input'))input.disabled=active;
   for(const button of document.querySelectorAll('[data-preset]'))button.disabled=active;
@@ -49,6 +52,20 @@ $('stop').onclick=()=>action('command',{command:'STOP'},'ESP32 已停止：PWM�
 $('brake').onclick=()=>action('settings',{settings:{BRAKE:state?.telemetry?.brake?0:1}},state?.telemetry?.brake?'煞車已解除。':'煞車已啟用，驅動電流歸零。');
 $('testStart').onclick=()=>action('test/start',{},'自動測試已開始，完成後會自動停止裝置。');
 $('testCancel').onclick=()=>action('test/cancel',{},'已要求中止並送出 STOP，等待停止確認。');
+$('faultTest').onclick=()=>action('test/start',{kind:'faults'},'故障測試已開始；結束會清除故障並停止裝置。');
+$('faultCancel').onclick=$('testCancel').onclick;
+const faultNames={NONE:'正常',PAS_LOSS:'踏頻中斷',TORQUE_ZERO:'扭力歸零',BRAKE_STUCK:'煞車卡住'};
+for(const button of document.querySelectorAll('[data-fault]'))button.onclick=()=>action('fault',{fault:button.dataset.fault},button.dataset.fault==='NONE'?'模型故障已解除；原設定保留。':`已注入模型故障：${faultNames[button.dataset.fault]}。`);
+function renderFault(t){
+  const supported=t?.fault_api===1;
+  $('faultBadge').textContent=supported?(faultNames[t.fault]||t.fault):'需更新韌體';
+  $('faultBadge').style.color=supported&&t.fault!=='NONE'?'var(--orange)':'var(--green)';
+  $('effectiveCadence').textContent=supported?Number(t.effective_cadence_rpm).toFixed(1)+' RPM':'— RPM';
+  $('effectiveTorque').textContent=supported?Number(t.effective_torque_nm).toFixed(1)+' Nm':'— Nm';
+  $('effectiveBrake').textContent=supported?(t.effective_brake?'已啟用':'已解除'):'—';
+  $('faultHint').textContent=supported?`設定值：踏頻 ${t.cadence_rpm} RPM / 扭力 ${t.torque_nm} Nm / 煞車 ${t.brake?'開':'關'}。STOP 會清除模型故障。`:'需 fault-v1 韌體。注入不會自動 RUN；STOP 會清除故障。';
+  for(const button of document.querySelectorAll('[data-fault]'))button.classList.toggle('active',supported&&button.dataset.fault===t.fault);
+}
 $('sweepCancel').onclick=$('testCancel').onclick;
 function sweepConfig(){
   const parse=id=>{const text=$(id).value.trim();const values=text?text.split(/[,，\s]+/).filter(Boolean).map(Number):[];if(values.some(v=>!Number.isFinite(v)))throw new Error('掃描清單須為數字，以逗號分隔');return values;};
@@ -118,7 +135,7 @@ function renderTest(test){
     notice(`自動測試 ${labels[r.status]}，${r.stop_confirmed?'已確認裝置停止':'裝置停止狀態未確認'}。`,r.status==='failed');
   }
   const elapsed=((r.finished_at||Date.now()/1000)-r.started_at).toFixed(1);
-  $('testProgress').textContent=test.active?`目前步驟：${r.step} · ${elapsed} 秒 · 已完成 ${r.steps.length}/4 項驗證`:
+  $('testProgress').textContent=test.active?`目前步驟：${r.step} · ${elapsed} 秒 · 已完成 ${r.steps.length}/${r.total_checks||4} 項驗證`:
     `${labels[r.status]} · ${elapsed} 秒 · 停止${r.stop_confirmed?'已確認':'未確認'}${r.error?' · '+r.error:''}${r.save_error?' · 報告未寫入磁碟，請下載保留':''}`;
   $('testResults').replaceChildren();
   if(r.kind==='sweep'){$('testProgress').textContent=`目前為掃描測試 · ${elapsed} 秒 · ${r.points.length}/${r.total_points} 點，結果見下方比較圖`;return;}
@@ -128,7 +145,9 @@ function renderTest(test){
     const body=document.createElement('div');body.textContent=step.name;
     const criteria=document.createElement('small');criteria.textContent=step.criteria;
     const observed=document.createElement('small');observed.textContent=`實測 ${Number(step.observed.rpm).toFixed(1)} RPM / ${Number(step.observed.current_a).toFixed(2)} A / ${Number(step.observed.battery_v).toFixed(2)} V`;
-    body.append(criteria,observed);row.append(badge,body);$('testResults').append(row);
+    body.append(criteria,observed);
+    if(r.kind==='faults'){const effective=document.createElement('small');effective.textContent=`${step.observed.fault} · 有效踏頻 ${step.observed.effective_cadence_rpm} RPM / 扭力 ${step.observed.effective_torque_nm} Nm / 煞車 ${step.observed.effective_brake?'開':'關'}`;body.append(effective);}
+    row.append(badge,body);$('testResults').append(row);
   }
 }
 const presets={flat:[48,80,60,0,40],hill:[48,80,60,15,40],idle:[48,0,0,0,20]};
@@ -146,6 +165,7 @@ function plot(id,samples,key,color){
 function render(s){
   if(transportError){notice(s.connected?'PC 服務已恢復，裝置數據已更新。':'PC 服務已恢復，請連接 ESP32。');transportError=false;}
   state=s;const t=s.telemetry,ok=s.connected&&!s.stale;
+  renderFault(t);
   renderTest(s.test);
   renderSweep(s.test);
   $('linkBadge').textContent=s.connected?(s.stale?'● 數據過期':`● 已連接 ${s.port}`):'● 尚未連線';$('linkBadge').className='badge'+(ok?' online':'');
@@ -158,7 +178,7 @@ function render(s){
     $('voltageMeter').style.width=Math.min(100,t.battery_v/60*100)+'%';$('currentMeter').style.width=Math.min(100,t.current_a/40*100)+'%';
     $('runBadge').textContent=(!ok?'STALE':t.running?'RUNNING':'STOPPED')+' · '+fmt(t.pwm_percent,0)+'%';
     $('rotor').style.animationPlayState=ok&&t.rpm>1?'running':'paused';$('rotor').style.animationDuration=Math.max(.2,60/Math.max(1,t.rpm)*10)+'s';
-    $('hall').textContent=t.hall.toString(2).padStart(3,'0').split('').join(' ');$('pas').textContent=fmt(t.pas_hz)+' Hz';$('wheel').textContent=fmt(t.wheel_hz,2)+' Hz';$('brakeState').textContent=t.brake?'已啟用':'已解除';
+    $('hall').textContent=t.hall.toString(2).padStart(3,'0').split('').join(' ');$('pas').textContent=fmt(t.pas_hz)+' Hz';$('wheel').textContent=fmt(t.wheel_hz,2)+' Hz';$('brakeState').textContent=(t.effective_brake??t.brake)?'已啟用':'已解除';
     $('brake').textContent=t.brake?'解除煞車':'啟用煞車';$('brake').classList.toggle('active',t.brake);
     $('dacMode').textContent=t.dac_backend.toUpperCase();for(let i=0;i<8;i++)$('dac'+i).textContent=t.dac_codes[i];
     if(!initialized&&ok){for(const [id,key]of [['BATTERY','battery_open_circuit_v'],['CADENCE','cadence_rpm'],['TORQUE','torque_nm'],['GRADE','grade_percent'],['PWM','pwm_percent']])$(id).value=t[key];$('pwmRange').value=t.pwm_percent;initialized=true;}
