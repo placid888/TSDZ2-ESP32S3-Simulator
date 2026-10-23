@@ -26,7 +26,16 @@ $('refresh').onclick=ports;
 $('connect').onclick=()=>state?.connected?action('disconnect',{},'連線已中斷，裝置 STOP 確認結果請見操作紀錄。'):action('connect',{port:$('ports').value},'ESP32 已連接。請套用設定，再開始運轉。');
 $('settings').onsubmit=e=>{e.preventDefault();const settings={};for(const [id]of fields)settings[id]=Number($(id).value);settings.PWM=Number($('PWM').value);action('settings',{settings},'設定已套用至 ESP32。');};
 $('PWM').oninput=()=>{$('pwmRange').value=$('PWM').value;};$('pwmRange').oninput=()=>{$('PWM').value=$('pwmRange').value;};
-$('run').onclick=()=>action('command',{command:'RUN'},'ESP32 模型運轉中。');
+$('run').onclick=async()=>{
+  if(busy||!$('settings').reportValidity())return;
+  busy=true;enabled();
+  try{
+    const settings={};for(const [id]of fields)settings[id]=Number($(id).value);settings.PWM=Number($('PWM').value);
+    await api('settings',{settings});
+    const result=await api('command',{command:'RUN'});render(result.state);
+    notice('畫面設定已套用，ESP32 模型運轉中。');
+  }catch(e){notice(e.message,true);}finally{busy=false;enabled();}
+};
 $('stop').onclick=()=>action('command',{command:'STOP'},'ESP32 已停止：PWM、轉速、電流與 DAC code 已清除。');
 $('brake').onclick=()=>action('settings',{settings:{BRAKE:state?.telemetry?.brake?0:1}},state?.telemetry?.brake?'煞車已解除。':'煞車已啟用，驅動電流歸零。');
 const presets={flat:[48,80,60,0,40],hill:[48,80,60,15,40],idle:[48,0,0,0,20]};
@@ -52,7 +61,7 @@ function render(s){
     $('rpm').textContent=fmt(t.rpm,0);$('erps').textContent=fmt(t.erps)+' ERPS';$('voltage').textContent=fmt(t.battery_v,2);$('current').textContent=fmt(t.current_a,2);
     $('sag').textContent=`壓降 ${fmt(t.battery_open_circuit_v-t.battery_v,2)} V`;$('power').textContent=`模型輸入功率 ${fmt(t.battery_v*t.current_a,0)} W`;
     $('voltageMeter').style.width=Math.min(100,t.battery_v/60*100)+'%';$('currentMeter').style.width=Math.min(100,t.current_a/40*100)+'%';
-    $('runBadge').textContent=!ok?'STALE':t.running?'RUNNING':'STOPPED';
+    $('runBadge').textContent=(!ok?'STALE':t.running?'RUNNING':'STOPPED')+' · '+fmt(t.pwm_percent,0)+'%';
     $('rotor').style.animationPlayState=ok&&t.rpm>1?'running':'paused';$('rotor').style.animationDuration=Math.max(.2,60/Math.max(1,t.rpm)*10)+'s';
     $('hall').textContent=t.hall.toString(2).padStart(3,'0').split('').join(' ');$('pas').textContent=fmt(t.pas_hz)+' Hz';$('wheel').textContent=fmt(t.wheel_hz,2)+' Hz';$('brakeState').textContent=t.brake?'已啟用':'已解除';
     $('brake').textContent=t.brake?'解除煞車':'啟用煞車';$('brake').classList.toggle('active',t.brake);
