@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let state = null, busy = false, lastEvent = '', initialized = false, transportError = false;
+let state = null, busy = false, lastEvent = '', initialized = false, transportError = false, lastTestResult = '';
 const fields = [ ['BATTERY','電池電壓','OPEN CIRCUIT','V',0,60,48], ['CADENCE','踩踏頻率','CADENCE','RPM',0,200,80], ['TORQUE','踩踏扭力','PEDAL TORQUE','Nm',0,200,60], ['GRADE','道路坡度','ROAD GRADE','%',-30,30,0] ];
 for (const [id,label,sub,unit,min,max,value] of fields) {
   const row = document.createElement('div'); row.className='field';
@@ -14,7 +14,14 @@ async function api(path,data){
   try { const r=await fetch('/api/'+path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined,signal:controller.signal});const v=await r.json();if(!r.ok)throw new Error(v.error||'操作失敗');return v; }
   finally{clearTimeout(timer);}
 }
-function enabled(){const ok=!!state?.connected&&!state.stale&&!busy;$('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;$('connect').disabled=busy;$('ports').disabled=!!state?.connected||busy;}
+function enabled(){
+  const active=!!state?.test?.active, ok=!!state?.connected&&!state.stale&&!busy&&!active;
+  $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
+  $('connect').disabled=busy||active;$('ports').disabled=!!state?.connected||busy;
+  $('testStart').disabled=!ok;$('testCancel').disabled=!active||busy;
+  for(const input of $('settings').querySelectorAll('input'))input.disabled=active;
+  for(const button of document.querySelectorAll('[data-preset]'))button.disabled=active;
+}
 async function action(path,data,success){
   if(busy)return;busy=true;enabled();
   try{const v=await api(path,data);if(v.state)render(v.state);notice(success);}
@@ -38,6 +45,33 @@ $('run').onclick=async()=>{
 };
 $('stop').onclick=()=>action('command',{command:'STOP'},'ESP32 已停止：PWM、轉速、電流與 DAC code 已清除。');
 $('brake').onclick=()=>action('settings',{settings:{BRAKE:state?.telemetry?.brake?0:1}},state?.telemetry?.brake?'煞車已解除。':'煞車已啟用，驅動電流歸零。');
+$('testStart').onclick=()=>action('test/start',{},'自動測試已開始，完成後會自動停止裝置。');
+$('testCancel').onclick=()=>action('test/cancel',{},'已要求中止並送出 STOP，等待停止確認。');
+function renderTest(test){
+  const r=test?.report;
+  $('testDownload').hidden=!r||test.active;
+  if(!r)return;
+  const labels={running:'RUNNING',cancelling:'STOPPING',passed:'PASS',failed:'FAIL',cancelled:'CANCELLED'};
+  $('testBadge').textContent=labels[r.status]||r.status;
+  $('testBadge').style.color=r.status==='failed'?'var(--orange)':r.status==='cancelled'?'var(--muted)':'var(--green)';
+  const signature=r.started_at+':'+r.status;
+  if(!test.active&&r.finished_at&&signature!==lastTestResult){
+    lastTestResult=signature;
+    notice(`自動測試 ${labels[r.status]}，${r.stop_confirmed?'已確認裝置停止':'裝置停止狀態未確認'}。`,r.status==='failed');
+  }
+  const elapsed=((r.finished_at||Date.now()/1000)-r.started_at).toFixed(1);
+  $('testProgress').textContent=test.active?`目前步驟：${r.step} · ${elapsed} 秒 · 已完成 ${r.steps.length}/4 項驗證`:
+    `${labels[r.status]} · ${elapsed} 秒 · 停止${r.stop_confirmed?'已確認':'未確認'}${r.error?' · '+r.error:''}${r.save_error?' · 報告未寫入磁碟，請下載保留':''}`;
+  $('testResults').replaceChildren();
+  for(const step of r.steps){
+    const row=document.createElement('div');row.className='test-result'+(step.passed?'':' fail');
+    const badge=document.createElement('b');badge.textContent=step.passed?'PASS':'FAIL';
+    const body=document.createElement('div');body.textContent=step.name;
+    const criteria=document.createElement('small');criteria.textContent=step.criteria;
+    const observed=document.createElement('small');observed.textContent=`實測 ${Number(step.observed.rpm).toFixed(1)} RPM / ${Number(step.observed.current_a).toFixed(2)} A / ${Number(step.observed.battery_v).toFixed(2)} V`;
+    body.append(criteria,observed);row.append(badge,body);$('testResults').append(row);
+  }
+}
 const presets={flat:[48,80,60,0,40],hill:[48,80,60,15,40],idle:[48,0,0,0,20]};
 for(const b of document.querySelectorAll('[data-preset]'))b.onclick=()=>{const values=presets[b.dataset.preset];fields.forEach(([id],i)=>$(id).value=values[i]);$('PWM').value=$('pwmRange').value=values[4];notice(`已載入「${b.textContent}」，按「套用設定」送至 ESP32。`);};
 function plot(id,samples,key,color){
@@ -53,6 +87,7 @@ function plot(id,samples,key,color){
 function render(s){
   if(transportError){notice(s.connected?'PC 服務已恢復，裝置數據已更新。':'PC 服務已恢復，請連接 ESP32。');transportError=false;}
   state=s;const t=s.telemetry,ok=s.connected&&!s.stale;
+  renderTest(s.test);
   $('linkBadge').textContent=s.connected?(s.stale?'● 數據過期':`● 已連接 ${s.port}`):'● 尚未連線';$('linkBadge').className='badge'+(ok?' online':'');
   $('connect').textContent=s.connected?'中斷連線':'連接裝置';
   $('sampleAge').textContent=s.age_s==null?'等待數據':`更新 ${s.age_s.toFixed(1)} 秒前`;

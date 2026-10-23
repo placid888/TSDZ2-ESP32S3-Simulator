@@ -11,3 +11,4 @@ sdkconfig.old
 __pycache__/
 pc/.venv/
 pc/*.log
+pc/reports/

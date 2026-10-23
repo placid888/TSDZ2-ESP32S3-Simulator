@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 import serial
 from serial.tools import list_ports
+from scenarios import ScenarioRunner
 
 RANGES = {"BATTERY": (0, 60), "CADENCE": (0, 200), "TORQUE": (0, 200),
           "GRADE": (-30, 30), "PWM": (0, 100), "BRAKE": (0, 1)}
@@ -168,6 +169,7 @@ class BenchLink:
 
 
 LINK = BenchLink()
+RUNNER = ScenarioRunner(LINK)
 STATIC = Path(__file__).with_name("web")
 
 
@@ -198,7 +200,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
         if path == "/api/state":
-            return self.respond(LINK.snapshot())
+            return self.respond({**LINK.snapshot(), 'test': RUNNER.snapshot()})
+        if path == "/api/test/report":
+            report = RUNNER.snapshot(include_samples=True)['report']
+            if not report:
+                return self.respond({'error':'尚無自動測試報告'}, 404)
+            return self.respond(report)
         if path == "/api/ports":
             return self.respond([{"device": p.device, "description": p.description} for p in list_ports.comports()])
         if path == "/api/export.csv":
@@ -227,17 +234,30 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("JSON request must be an object")
             path = urlparse(self.path).path
-            if path == "/api/connect":
-                LINK.connect(data.get("port"))
-            elif path == "/api/disconnect":
-                LINK.disconnect()
-            elif path == "/api/settings":
-                LINK.apply(data.get("settings"))
-            elif path == "/api/command":
-                LINK.command(data.get("command"))
-            else:
-                return self.respond({"error": "Not found"}, 404)
-            self.respond({"ok": True, "state": LINK.snapshot()})
+            with LINK.lock:
+                if RUNNER.active and path not in ('/api/test/cancel','/api/command'):
+                    raise ValueError('自動測試進行中，請先中止並等待停止確認')
+                if path == "/api/connect":
+                    LINK.connect(data.get("port"))
+                elif path == "/api/disconnect":
+                    LINK.disconnect()
+                elif path == "/api/settings":
+                    LINK.apply(data.get("settings"))
+                elif path == "/api/command":
+                    if RUNNER.active:
+                        if data.get('command') != 'STOP':
+                            raise ValueError('自動測試進行中，僅接受 STOP')
+                        RUNNER.cancel()
+                    LINK.command(data.get("command"))
+                elif path == '/api/test/start':
+                    RUNNER.start()
+                elif path == '/api/test/cancel':
+                    RUNNER.cancel()
+                    LINK.command('STOP')
+                else:
+                    return self.respond({"error": "Not found"}, 404)
+                result = {"ok": True, "state": {**LINK.snapshot(), 'test': RUNNER.snapshot()}}
+            self.respond(result)
         except (ValueError, TimeoutError, serial.SerialException, OSError) as exc:
             self.respond({"error": str(exc)}, 400)
 
