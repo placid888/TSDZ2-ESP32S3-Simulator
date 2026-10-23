@@ -1,3 +1,3 @@
-idf_component_register(SRCS "main.c" "tsdz_utils.c"
+idf_component_register(SRCS "main.c" "tsdz_utils.c" "bench_model.c" "bench_app.c" "dac8568.c"
 INCLUDE_DIRS "."
 REQUIRES driver freertos esp_timer nvs_flash bt )

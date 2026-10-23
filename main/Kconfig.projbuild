@@ -1,0 +1,19 @@
+menu "Virtual Bench"
+config VIRTUAL_BENCH
+    bool "Run Virtual Bench instead of legacy BLE/UART simulator"
+    default n
+    help
+        Starts stopped. Uses serial console, fake controller PWM and logical
+        signals. Legacy mode remains the default.
+choice BENCH_DAC_MODE
+    prompt "DAC8568 backend"
+    depends on VIRTUAL_BENCH
+    default BENCH_DAC_MOCK
+config BENCH_DAC_DISABLED
+    bool "Disabled"
+config BENCH_DAC_MOCK
+    bool "Mock (no physical SPI)"
+config BENCH_DAC_SPI
+    bool "SPI (requires board_config pins and verified interface)"
+endchoice
+endmenu

@@ -2,13 +2,24 @@ name: Build ESP32-S3 Simulator
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "feat/**" ]
+  pull_request:
   workflow_dispatch:
 
 jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S tests -B build-host && cmake --build build-host && ctest --test-dir build-host --output-on-failure
   build:
     runs-on: ubuntu-latest
-    container: espressif/idf:release-v5.1
+    strategy:
+      fail-fast: false
+      matrix:
+        idf: [release-v5.1, v5.5.5]
+        mode: [legacy, mock, disabled, spi]
+    container: espressif/idf:${{ matrix.idf }}
 
     steps:
       - name: Checkout Code
@@ -17,17 +28,22 @@ jobs:
       - name: Configure Flash Size and Build
         run: |
           . $IDF_PATH/export.sh
-          echo "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y" >> sdkconfig.defaults
-          echo "CONFIG_ESPTOOLPY_FLASHSIZE=\"16MB\"" >> sdkconfig.defaults
-          echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
-          echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"" >> sdkconfig.defaults
+          cp sdkconfig.defaults sdkconfig.ci
+          echo "CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=n" >> sdkconfig.ci
+          echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.ci
+          echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions.csv\"" >> sdkconfig.ci
+          if [ "${{ matrix.mode }}" != legacy ]; then
+            echo 'CONFIG_VIRTUAL_BENCH=y' >> sdkconfig.ci
+            echo "CONFIG_BENCH_DAC_${{ matrix.mode == 'mock' && 'MOCK' || matrix.mode == 'disabled' && 'DISABLED' || 'SPI' }}=y" >> sdkconfig.ci
+          fi
+          export SDKCONFIG_DEFAULTS=sdkconfig.ci
           idf.py set-target esp32s3
           idf.py build
 
       - name: Upload Binary Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: esp32s3-simulator-binaries
+          name: esp32s3-simulator-${{ matrix.idf }}-${{ matrix.mode }}
           path: |
             build/tsdz2_esp32s3_sim.bin
             build/bootloader/bootloader.bin

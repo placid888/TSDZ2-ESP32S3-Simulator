@@ -1,4 +1,15 @@
   # TSDZ2 ESP32-S3 Hardware Simulator (TSDZ2 模擬控制器發射台)
+
+## TSDZ Virtual Bench / HIL — 第一階段
+
+新增可選的 **Virtual Bench** 模式：VirtualMotor、VirtualBattery、VirtualRider、
+SignalGenerator、fake ControllerInput、Serial CLI 與 DAC8568 mock/disabled/SPI driver。
+預設仍為既有 BLE/UART 模式；Bench 開機停止，新增 GPIO 全部未配置。
+Hall/PAS/Wheel/Brake 目前為邏輯模型，尚未輸出實體計時波形；SPI 感測器換算尚待校準。
+完整建置方式、CLI 單位／範圍與硬體限制見 [Virtual Bench 說明](docs/virtual-bench.md)。
+
+以下為原有 BLE/UART 模擬器說明；其中封包相容性、10 Hz 等敘述是歷史文件，
+尚未經本階段實機驗證（現有發送週期為 300 ms）。
   
   這是一個專為 TSDZ2 開源儀表板專案開發的「專屬硬體模擬器」。
   

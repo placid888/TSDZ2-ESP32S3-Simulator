@@ -9,6 +9,9 @@
 #include "esp_timer.h"
 #include "nvs_flash.h"
 #include "tsdz_utils.h"
+#include "board_config.h"
+#include "bench_app.h"
+#include <stdlib.h>
 
 // 藍牙 NimBLE 相關標頭檔
 #include "esp_nimble_hci.h"
@@ -21,8 +24,8 @@
 #define TAG "TSDZ_SIM"
 
 #define SIM_UART_NUM      UART_NUM_1
-#define SIM_TX_PIN        17
-#define SIM_RX_PIN        18
+#define SIM_TX_PIN        BOARD_LEGACY_TX
+#define SIM_RX_PIN        BOARD_LEGACY_RX
 #define CT_MSG_ID         0x43
 #define CT_OS_MSG_BYTES   29
 
@@ -273,10 +276,14 @@ void ble_host_task(void *param) {
 }
 
 void app_main(void) {
+#if CONFIG_VIRTUAL_BENCH
+    bench_app_start();
+    return;
+#endif
     // 強制關閉 ESP32-S3 內建 RGB LED (GPIO 48)
-    gpio_reset_pin(GPIO_NUM_48);
-    gpio_set_direction(GPIO_NUM_48, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_NUM_48, 0);
+    gpio_reset_pin(BOARD_RGB_LED);
+    gpio_set_direction(BOARD_RGB_LED, GPIO_MODE_OUTPUT);
+    gpio_set_level(BOARD_RGB_LED, 0);
 
     ESP_ERROR_CHECK(nvs_flash_init());
     sim_uart_init();
