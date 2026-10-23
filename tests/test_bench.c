@@ -28,8 +28,9 @@ int main(void) {
     command(&b, "SET BATTERY 48"); command(&b, "SET CADENCE 80");
     command(&b, "SET TORQUE 60"); command(&b, "RUN");
     for (int i = 0; i < 1000; ++i) bench_step(&b, 0.01f);
-    CHECK(b.motor.rpm > 1500 && b.motor.rpm < 1601);
+    CHECK(b.motor.rpm > 1500 && b.motor.rpm < 1600);
     CHECK(b.battery.terminal_v < 48 && b.motor.current_a > 0);
+    CHECK(fabsf(b.motor.rpm - 1600 * b.battery.terminal_v / 48) < 3);
     CHECK(fabsf(b.signals.pas_hz - 16) < 0.01f);
     CHECK(b.signals.hall != 0 && b.signals.hall != 7);
     float flat_rpm = b.motor.rpm;
@@ -47,6 +48,25 @@ int main(void) {
     command(&b, "STOP"); CHECK(!b.running && b.motor.rpm == 0 && b.signals.hall == 0);
     CHECK(b.controller.pwm_percent == 0 && b.battery.terminal_v == 48);
     command(&b, "STATUS"); CHECK(strstr(reply, "input=fake"));
+    command(&b, "SET BATTERY 0"); command(&b, "SET PWM 80"); command(&b, "RUN");
+    bench_step(&b, 0.01f);
+    CHECK(b.motor.current_a == 0 && b.motor.rpm == 0 && b.battery.terminal_v == 0);
+    command(&b, "STOP");
+    uint16_t codes[8] = {0, 1, 2, 3, 4, 5, 6, 65535};
+    char telemetry[768];
+    CHECK(bench_telemetry(&b, "mock", codes, telemetry, sizeof(telemetry)));
+    CHECK(strstr(telemetry, "\"type\":\"telemetry\",\"protocol\":1"));
+    CHECK(strstr(telemetry, "\"running\":false"));
+    CHECK(strstr(telemetry, "\"dac_codes\":[0,1,2,3,4,5,6,65535]"));
+    CHECK(strstr(telemetry, "\"battery_open_circuit_v\":0.000"));
+    CHECK(telemetry[0] == '{' && telemetry[strlen(telemetry)-1] == '}');
+    CHECK(!strchr(telemetry, '\n'));
+    CHECK(!bench_telemetry(&b, "mock", codes, telemetry, 10) && telemetry[0] == 0);
+    CHECK(!bench_telemetry(&b, "invalid\"backend", codes, telemetry, sizeof(telemetry)) && telemetry[0] == 0);
+    command(&b, "RUN"); command(&b, "SET BRAKE 1");
+    CHECK(bench_telemetry(&b, "disabled", codes, telemetry, sizeof(telemetry)));
+    CHECK(strstr(telemetry, "\"running\":true") && strstr(telemetry, "\"brake\":true"));
+    CHECK(bench_telemetry(&b, "spi-zero-only", codes, telemetry, sizeof(telemetry)));
     Dac8568 d; CHECK(dac8568_init(&d, DAC_MOCK) == ESP_OK);
     CHECK(spi_calls == 0 && d.last_frame == 0x08000001);
     for (unsigned ch = 0; ch < 8; ++ch) {
@@ -64,6 +84,6 @@ int main(void) {
     CHECK(dac8568_write(&d, 7, 0xabcd) == ESP_OK && sent == 0x037abcd0);
     transport_result = 99;
     CHECK(dac8568_write(&d, 7, 1) == 99 && d.codes[7] == 0xabcd);
-    puts("PASS model dynamics, CLI validation/STOP, DAC channels/packing/modes/errors");
+    puts("PASS model dynamics/voltage coupling, CLI validation/STOP, telemetry records/bounds, DAC channels/packing/modes/errors");
     return 0;
 }

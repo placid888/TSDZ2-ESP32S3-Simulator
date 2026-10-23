@@ -1,0 +1,260 @@
+"""Local USB serial bridge. No cloud service, simulated PC data, or auto-RUN."""
+import argparse
+import csv
+import io
+import json
+import math
+import threading
+import time
+from collections import deque
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse
+
+import serial
+from serial.tools import list_ports
+
+RANGES = {"BATTERY": (0, 60), "CADENCE": (0, 200), "TORQUE": (0, 200),
+          "GRADE": (-30, 30), "PWM": (0, 100), "BRAKE": (0, 1)}
+FIELDS = ["time", "running", "rpm", "current_a", "battery_v", "cadence_rpm",
+          "torque_nm", "grade_percent", "pwm_percent", "brake"]
+
+
+def validate_settings(settings):
+    if not isinstance(settings, dict) or not settings:
+        raise ValueError("請提供設定值")
+    result = []
+    for name, value in settings.items():
+        if name not in RANGES or isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("未知參數或數值格式錯誤")
+        lo, hi = RANGES[name]
+        if not math.isfinite(value) or not lo <= value <= hi or (name == "BRAKE" and value not in (0, 1)):
+            raise ValueError(f"{name} 必須介於 {lo} 與 {hi}")
+        result.append(f"SET {name} {value:g}")
+    return result
+
+
+class BenchLink:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.port = None
+        self.port_name = None
+        self.telemetry = None
+        self.updated = 0
+        self.samples = deque(maxlen=1200)
+        self.events = deque(maxlen=60)
+        self.error = None
+        self.failures = 0
+
+    def event(self, message):
+        self.events.append({"time": time.time(), "message": message})
+
+    def _line(self, command, telemetry=False):
+        if not self.port:
+            raise ValueError("尚未連接 ESP32")
+        self.port.write((command + "\n").encode("ascii"))
+        self.port.flush()
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            raw = self.port.read_until(b"\n", 2048)
+            if not raw:
+                continue
+            line = raw.decode("utf-8", errors="replace").strip()
+            if line.startswith("ERR"):
+                raise ValueError("ESP32: " + line)
+            if telemetry and line.startswith("{"):
+                value = json.loads(line)
+                if value.get("type") != "telemetry" or value.get("protocol") != 1:
+                    raise ValueError("不相容的 ESP32 telemetry 版本")
+                required = ("rpm", "battery_v", "current_a", "cadence_rpm", "torque_nm", "pwm_percent")
+                if any(not isinstance(value.get(k), (int, float)) or not math.isfinite(value[k]) for k in required):
+                    raise ValueError("ESP32 回報無效數據")
+                return value
+            if not telemetry and line == "OK":
+                return
+        raise TimeoutError("ESP32 回應逾時；請確認已燒入支援 TELEMETRY 的串口版韌體")
+
+    def _refresh(self):
+        data = self._line("TELEMETRY", telemetry=True)
+        self.telemetry = data
+        self.updated = time.monotonic()
+        self.samples.append({"time": time.time(), **data})
+        self.error = None
+        self.failures = 0
+
+    def connect(self, name):
+        if name not in [p.device for p in list_ports.comports()]:
+            raise ValueError("找不到這個串口，請重新整理")
+        with self.lock:
+            if self.port:
+                raise ValueError("請先中斷目前連線")
+            port = serial.Serial()
+            port.port, port.baudrate = name, 115200
+            port.timeout, port.write_timeout = 0.15, 1
+            port.dtr = port.rts = False
+            port.open()
+            self.port, self.port_name = port, name
+            self.telemetry = None
+            self.samples.clear()
+            try:
+                time.sleep(0.3)
+                self._refresh()
+                self.event(f"已連接 {name} · 115200 baud · protocol 1")
+            except Exception:
+                port.close()
+                self.port, self.port_name = None, None
+                raise
+
+    def disconnect(self):
+        with self.lock:
+            if self.port:
+                try:
+                    self._line("STOP")
+                    self.event("ESP32 已確認 STOP，已中斷連線")
+                except Exception as exc:
+                    self.event(f"中斷連線；STOP 未確認：{exc}")
+                self.port.close()
+                self.port = None
+                self.port_name = None
+
+    def apply(self, settings):
+        commands = validate_settings(settings)  # validate the whole request first
+        with self.lock:
+            try:
+                for command in commands:
+                    self._line(command)
+                self._refresh()
+                self.event("已套用 " + " / ".join(commands))
+            except Exception:
+                if self.port:
+                    try:
+                        self._line("STOP")
+                    except Exception:
+                        pass
+                raise
+
+    def command(self, command):
+        if command not in ("RUN", "STOP"):
+            raise ValueError("不支援的命令")
+        with self.lock:
+            if command == "RUN" and (not self.telemetry or time.monotonic() - self.updated > 2.5):
+                raise ValueError("數據已過期，請重新連接後再 RUN")
+            self._line(command)
+            self.event("ESP32 已確認 " + command)
+            self._refresh()
+
+    def snapshot(self):
+        with self.lock:
+            age = time.monotonic() - self.updated if self.updated else None
+            return {"connected": bool(self.port), "port": self.port_name,
+                    "age_s": age, "stale": age is None or age > 2.5,
+                    "telemetry": self.telemetry, "samples": list(self.samples)[-240:],
+                    "events": list(self.events), "error": self.error}
+
+    def poll(self):
+        while True:
+            time.sleep(0.25)
+            with self.lock:
+                if self.port:
+                    try:
+                        self._refresh()
+                    except Exception as exc:
+                        self.error = str(exc)
+                        self.failures += 1
+                        if self.failures >= 3:
+                            self.event("連線中斷：" + self.error + "；無法確認裝置停止狀態")
+                            self.port.close()
+                            self.port, self.port_name = None, None
+
+
+LINK = BenchLink()
+STATIC = Path(__file__).with_name("web")
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *_):
+        pass
+
+    def respond(self, data, status=200, kind="application/json; charset=utf-8"):
+        if isinstance(data, (dict, list)):
+            data = json.dumps(data, allow_nan=False, ensure_ascii=False).encode("utf-8")
+        elif isinstance(data, str):
+            data = data.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def allowed(self):
+        host = self.headers.get("Host", "")
+        return host in (f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}")
+
+    def do_GET(self):
+        if not self.allowed():
+            return self.respond({"error": "Invalid host"}, 403)
+        path = urlparse(self.path).path
+        if path == "/api/state":
+            return self.respond(LINK.snapshot())
+        if path == "/api/ports":
+            return self.respond([{"device": p.device, "description": p.description} for p in list_ports.comports()])
+        if path == "/api/export.csv":
+            with LINK.lock:
+                rows = list(LINK.samples)
+            content = io.StringIO(newline="")
+            writer = csv.DictWriter(content, fieldnames=FIELDS, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rows)
+            return self.respond(content.getvalue(), kind="text/csv; charset=utf-8")
+        files = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}
+        if path not in files:
+            return self.respond({"error": "Not found"}, 404)
+        kind = {"/": "text/html", "/app.js": "text/javascript", "/style.css": "text/css"}[path]
+        return self.respond((STATIC / files[path]).read_bytes(), kind=kind + "; charset=utf-8")
+
+    def do_POST(self):
+        origin = self.headers.get("Origin")
+        if not self.allowed() or (origin and origin != "http://" + self.headers.get("Host", "")):
+            return self.respond({"error": "Invalid origin"}, 403)
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if not 0 < length <= 2048 or not self.headers.get("Content-Type", "").startswith("application/json"):
+                raise ValueError("Invalid request")
+            data = json.loads(self.rfile.read(length))
+            if not isinstance(data, dict):
+                raise ValueError("JSON request must be an object")
+            path = urlparse(self.path).path
+            if path == "/api/connect":
+                LINK.connect(data.get("port"))
+            elif path == "/api/disconnect":
+                LINK.disconnect()
+            elif path == "/api/settings":
+                LINK.apply(data.get("settings"))
+            elif path == "/api/command":
+                LINK.command(data.get("command"))
+            else:
+                return self.respond({"error": "Not found"}, 404)
+            self.respond({"ok": True, "state": LINK.snapshot()})
+        except (ValueError, TimeoutError, serial.SerialException, OSError) as exc:
+            self.respond({"error": str(exc)}, 400)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8765)
+    args = parser.parse_args()
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    threading.Thread(target=LINK.poll, daemon=True).start()
+    print(f"TSDZ Virtual Bench http://127.0.0.1:{args.port}", flush=True)
+    try:
+        server.serve_forever()
+    finally:
+        LINK.disconnect()
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

@@ -26,3 +26,7 @@ void bench_init(VirtualBench *b);
 void bench_step(VirtualBench *b, float dt);
 /* Complete line, strict grammar and finite bounded values; no partial mutation. */
 bool bench_command(VirtualBench *b, const char *line, char *reply, size_t size);
+/* Atomic snapshot supplied by caller. Returns false and an empty string if the
+   buffer cannot hold the complete JSON record (never emits truncated JSON). */
+bool bench_telemetry(const VirtualBench *b, const char *dac_backend,
+                     const uint16_t dac_codes[8], char *reply, size_t size);

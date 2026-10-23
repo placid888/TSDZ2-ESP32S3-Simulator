@@ -41,7 +41,7 @@ static void model_task(void *arg) {
     }
 }
 static void console_task(void *arg) {
-    char line[128], reply[512];
+    char line[128], reply[768];
     size_t used = 0;
     bool overflow = false;
     while (1) {
@@ -52,7 +52,13 @@ static void console_task(void *arg) {
             else if (used) {
                 line[used] = 0;
                 xSemaphoreTake(mutex, portMAX_DELAY);
-                bench_command(&bench, line, reply, sizeof(reply));
+                char verb[16], extra[2];
+                bool telemetry = sscanf(line, "%15s %1s", verb, extra) == 1 && !strcmp(verb, "TELEMETRY");
+                const char *backend = dac.mode == DAC_MOCK ? "mock" : dac.mode == DAC_SPI ? "spi-zero-only" : "disabled";
+                if (telemetry) {
+                    if (!bench_telemetry(&bench, backend, dac.codes, reply, sizeof(reply)))
+                        snprintf(reply, sizeof(reply), "ERR telemetry buffer");
+                } else bench_command(&bench, line, reply, sizeof(reply));
                 if (!bench.running) ESP_ERROR_CHECK(dac8568_zero(&dac));
                 puts(reply);
                 if (!strncmp(line, "STATUS", 6)) {
@@ -81,5 +87,5 @@ void bench_app_start(void) {
     ESP_ERROR_CHECK(dac8568_init(&dac, mode));
     configASSERT(xTaskCreate(model_task, "bench_model", 4096, NULL, 5, NULL) == pdPASS);
     configASSERT(xTaskCreate(console_task, "bench_console", 4096, NULL, 4, NULL) == pdPASS);
-    ESP_LOGI("BENCH", "Stopped; fake PWM; logical GPIO; SET ... / RUN / STATUS / STOP");
+    ESP_LOGI("BENCH", "Stopped; fake PWM; logical GPIO; SET ... / RUN / STATUS / TELEMETRY / STOP");
 }

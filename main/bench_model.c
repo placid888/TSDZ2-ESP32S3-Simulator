@@ -14,10 +14,10 @@ void bench_init(VirtualBench *b) {
 void bench_step(VirtualBench *b, float dt) {
     if (!isfinite(dt) || dt <= 0 || dt > 0.1f) return;
     if (!b->running) return;
-    float duty = b->brake ? 0 : b->controller.pwm_percent / 100.0f;
+    float duty = b->brake || b->battery.open_circuit_v <= 0 ? 0 : b->controller.pwm_percent / 100.0f;
     /* Simple first-order plant. Grade increases load; no regeneration model. */
     float load = clamp(1 + b->grade_percent * 0.025f, 0.25f, 2);
-    float target = duty * 4000 * (b->battery.open_circuit_v / 48) / load;
+    float target = duty * 4000 * (b->battery.terminal_v / 48) / load;
     b->motor.rpm += (target - b->motor.rpm) * (1 - expf(-dt / (b->brake ? 0.15f : 1.5f)));
     b->motor.current_a = duty * (2 + 18 * load * clamp(1 - b->motor.rpm / 4000, 0, 1));
     b->motor.erps = b->motor.rpm / 60 * BENCH_POLE_PAIRS;
@@ -35,6 +35,30 @@ void bench_step(VirtualBench *b, float dt) {
     s->pas = s->pas_hz > 0 && s->pas_phase < 0.5;
     s->wheel = s->wheel_hz > 0 && s->wheel_phase < 0.5;
     s->brake = b->brake;
+}
+bool bench_telemetry(const VirtualBench *b, const char *dac_backend,
+                     const uint16_t dac_codes[8], char *reply, size_t size) {
+    /* Backend is a closed enum at the wire boundary, never arbitrary JSON text. */
+    if (!strcmp(dac_backend, "mock") || !strcmp(dac_backend, "disabled") ||
+        !strcmp(dac_backend, "spi-zero-only")) {
+        int n = snprintf(reply, size,
+            "{\"type\":\"telemetry\",\"protocol\":1,\"running\":%s,\"input\":\"fake\","
+            "\"pwm_percent\":%.2f,\"battery_v\":%.3f,\"battery_open_circuit_v\":%.3f,"
+            "\"current_a\":%.3f,\"rpm\":%.2f,\"erps\":%.2f,\"cadence_rpm\":%.2f,"
+            "\"torque_nm\":%.2f,\"grade_percent\":%.2f,\"brake\":%s,\"hall\":%u,"
+            "\"pas_hz\":%.3f,\"wheel_hz\":%.3f,\"dac_backend\":\"%s\","
+            "\"dac_codes\":[%u,%u,%u,%u,%u,%u,%u,%u],\"gpio\":\"logical-only\"}",
+            b->running ? "true" : "false", b->controller.pwm_percent,
+            b->battery.terminal_v, b->battery.open_circuit_v, b->motor.current_a,
+            b->motor.rpm, b->motor.erps, b->rider.cadence_rpm, b->rider.torque_nm,
+            b->grade_percent, b->brake ? "true" : "false", b->signals.hall,
+            b->signals.pas_hz, b->signals.wheel_hz, dac_backend,
+            dac_codes[0], dac_codes[1], dac_codes[2], dac_codes[3],
+            dac_codes[4], dac_codes[5], dac_codes[6], dac_codes[7]);
+        if (n >= 0 && (size_t)n < size) return true;
+    }
+    if (size) reply[0] = 0;
+    return false;
 }
 bool bench_command(VirtualBench *b, const char *line, char *reply, size_t size) {
     char verb[16], key[16], value[40], extra[2];

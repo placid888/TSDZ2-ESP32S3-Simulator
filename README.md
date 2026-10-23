@@ -2,6 +2,9 @@
 
 ## TSDZ Virtual Bench / HIL — 第一階段
 
+新增 [PC 即時控制台](pc/README.md)：連接 USB 串口後可調整情境、RUN／STOP／煞車，
+觀察實體 ESP32 回傳的轉速、電流、電池壓降曲線，並匯出 CSV。
+
 新增可選的 **Virtual Bench** 模式：VirtualMotor、VirtualBattery、VirtualRider、
 SignalGenerator、fake ControllerInput、Serial CLI 與 DAC8568 mock/disabled/SPI driver。
 預設仍為既有 BLE/UART 模式；Bench 開機停止，新增 GPIO 全部未配置。

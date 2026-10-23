@@ -8,3 +8,6 @@ sdkconfig.old
 
 # 忽略 VS Code C/C++ 語法檢查器產生的快取
 .clangd/
+__pycache__/
+pc/.venv/
+pc/*.log
