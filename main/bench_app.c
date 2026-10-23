@@ -7,6 +7,8 @@
 #include "freertos/semphr.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "esp_app_desc.h"
+#include "cJSON.h"
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -41,6 +43,24 @@ static void model_task(void *arg) {
         xSemaphoreGive(mutex);
     }
 }
+static bool device_info(char *reply, size_t size) {
+    const esp_app_desc_t *app = esp_app_get_description();
+    char hash[65];
+    for (int i = 0; i < 32; ++i) snprintf(hash + i*2, 3, "%02x", app->app_elf_sha256[i]);
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return false;
+    bool ok = cJSON_AddStringToObject(root, "type", "device_info") &&
+        cJSON_AddNumberToObject(root, "protocol", 1) &&
+        cJSON_AddStringToObject(root, "project", app->project_name) &&
+        cJSON_AddStringToObject(root, "version", app->version) &&
+        cJSON_AddStringToObject(root, "idf_version", app->idf_ver) &&
+        cJSON_AddStringToObject(root, "build_date", app->date) &&
+        cJSON_AddStringToObject(root, "build_time", app->time) &&
+        cJSON_AddStringToObject(root, "elf_sha256", hash) &&
+        cJSON_PrintPreallocated(root, reply, size, false);
+    cJSON_Delete(root);
+    return ok;
+}
 static void console_task(void *arg) {
     char line[128], reply[1024];
     size_t used = 0;
@@ -54,11 +74,16 @@ static void console_task(void *arg) {
                 line[used] = 0;
                 xSemaphoreTake(mutex, portMAX_DELAY);
                 char verb[16], extra[2];
-                bool telemetry = sscanf(line, "%15s %1s", verb, extra) == 1 && !strcmp(verb, "TELEMETRY");
+                bool single = sscanf(line, "%15s %1s", verb, extra) == 1;
+                bool telemetry = single && !strcmp(verb, "TELEMETRY");
+                bool info = single && !strcmp(verb, "INFO");
                 const char *backend = dac.mode == DAC_MOCK ? "mock" : dac.mode == DAC_SPI ? "spi-zero-only" : "disabled";
                 if (bench_check_link(&bench, esp_timer_get_time())) ESP_ERROR_CHECK(dac8568_zero(&dac));
                 bool valid = false;
-                if (telemetry) {
+                if (info) {
+                    valid = device_info(reply, sizeof(reply));
+                    if (!valid) snprintf(reply, sizeof(reply), "ERR info buffer");
+                } else if (telemetry) {
                     valid = bench_telemetry(&bench, backend, dac.codes, reply, sizeof(reply));
                     if (!valid)
                         snprintf(reply, sizeof(reply), "ERR telemetry buffer");

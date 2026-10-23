@@ -12,3 +12,5 @@
 .history select{display:block;width:100%;max-width:100%;margin:12px 0;padding:10px}.history label,.history p{font-size:12px;line-height:1.8}.history-rows{max-height:300px;overflow:auto;margin-top:14px}.history-rows p{border-top:1px solid var(--line);padding:9px 0}.history a{display:inline-block;margin:8px 0}
 
 .endurance p,.endurance label{font-size:12px;line-height:1.8}.endurance input{width:80px;padding:9px;margin-left:12px;background:#101a1b;border:1px solid var(--line);border-radius:5px;color:var(--text)}
+
+.provenance p{font-size:12px;line-height:1.8;overflow-wrap:anywhere}

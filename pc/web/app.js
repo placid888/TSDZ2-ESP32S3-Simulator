@@ -179,9 +179,16 @@ function renderDac(t,fresh){
   }
 }
 $('dacGain').onchange=()=>{if(state?.telemetry)renderDac(state.telemetry,state.connected&&!state.stale);};
+function provenanceText(p){
+  const f=p?.firmware,c=p?.pc;
+  return `韌體 ${f?.version||'未記錄'} · ELF ${f?.elf_sha256?.slice(0,12)||'未記錄'} / PC ${c?.source_sha256?.slice(0,12)||'未記錄'}`;
+}
 function render(s){
   if(transportError){notice(s.connected?'PC 服務已恢復，裝置數據已更新。':'PC 服務已恢復，請連接 ESP32。');transportError=false;}
   state=s;const t=s.telemetry,ok=s.connected&&!s.stale;
+  const fw=s.device_info;
+  $('firmwareIdentity').textContent=fw?`ESP32 ${fw.version} · IDF ${fw.idf_version} · ELF ${fw.elf_sha256.slice(0,12)}${ok?'':' · 舊資料'}`:'ESP32：尚未讀取或韌體未支援版本查詢';
+  $('pcIdentity').textContent=s.pc_identity?`PC 程式 ${s.pc_identity.source_sha256.slice(0,12)} · Python ${s.pc_identity.python_version}`:'PC：未記錄';
   renderFault(t);
   renderTest(s.test);
   renderSweep(s.test);
@@ -235,6 +242,7 @@ $('historySelect').onchange=async()=>{
     const r=await api('reports/'+encodeURIComponent(id));
     if(request!==historyRequest)return;
     $('historySummary').textContent=`${r.name} · ${r.status.toUpperCase()} · 停止${r.stop_confirmed?'已確認':'未確認'}${r.error?' · '+r.error:''}`;
+    $('historyProvenance').textContent=provenanceText(r.provenance);
     $('historyDownload').href='/api/reports/'+encodeURIComponent(id);
     $('historyDownload').download=id;
     $('historyRows').replaceChildren();

@@ -68,3 +68,8 @@ ESP32 在 RUNNING 時若連續 5000 ms 未收到有效完整指令，會在模�
 TELEMETRY 增加 `watchdog_ms:5000`、`link_timeout:boolean`、`link_timeout_count:number`。逾時標記保留至下一次明確 RUN；普通查詢、STOP 或重新連線不會清除標記或重新啟動。次數每次開機歸零。RUN 時 PWM 已歸零，必須重新設定後才有驅動。
 
 PC 服務會持續查詢 ESP32，所以只關閉網頁不會觸發停止；應使用 STOP。手動串口操作時也須在 5 秒內送出有效查詢以維持運轉。此機制屬於模型韌體功能，尚未接入實體 STM8/DAC 感測器電路。
+## 裝置版本 INFO
+
+`INFO`（不接受其他參數）回傳單行 JSON：type=device_info、protocol=1、project、version、idf_version、build_date、build_time、elf_sha256。版本取自 ESP-IDF 應用程式描述，elf_sha256 是編譯 ELF 的完整 SHA-256。它不是燒錄 binary 檔案的 SHA-256。INFO 是有效通訊，更新 5 秒通訊保護時間，不會自行 RUN。
+
+TELEMETRY 透過 `info_api:1` 宣告支援。PC 連線後僅對支援裝置查詢 INFO；舊韌體仍可連線但無版本資訊。

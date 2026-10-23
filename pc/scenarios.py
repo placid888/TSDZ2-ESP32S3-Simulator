@@ -51,6 +51,8 @@ class ScenarioRunner:
                            'total_checks':4*cycles if kind=='endurance' else 8 if kind=='faults' else 4,
                            'status': 'running', 'started_at': time.time(), 'finished_at': None,
                            'port': self.link.port_name, 'protocol': t['protocol'],
+                           'provenance':{'firmware':copy.deepcopy(getattr(self.link,'device_info',None)),
+                                         'pc':copy.deepcopy(getattr(self.link,'pc_identity',None))},
                            'scope': 'ESP32 model / fake PWM / logical GPIO / DAC mock or disabled',
                            'parameters': {'BATTERY':48,'CADENCE':80,'TORQUE':60,'PWM':40,'GRADE':0,'BRAKE':0},
                            'step': '準備', 'steps': [], 'samples': [], 'stop_confirmed': False,

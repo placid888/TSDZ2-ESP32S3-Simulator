@@ -78,7 +78,7 @@ bool bench_telemetry(const VirtualBench *b, const char *dac_backend,
             "\"torque_nm\":%.2f,\"grade_percent\":%.2f,\"brake\":%s,\"hall\":%u,"
             "\"pas_hz\":%.3f,\"wheel_hz\":%.3f,\"dac_backend\":\"%s\","
             "\"dac_codes\":[%u,%u,%u,%u,%u,%u,%u,%u],\"gpio\":\"logical-only\","
-            "\"fault_api\":1,\"fault\":\"%s\",\"effective_cadence_rpm\":%.2f,"
+            "\"info_api\":1,\"fault_api\":1,\"fault\":\"%s\",\"effective_cadence_rpm\":%.2f,"
             "\"effective_torque_nm\":%.2f,\"effective_brake\":%s,"
             "\"watchdog_ms\":%u,\"link_timeout\":%s,\"link_timeout_count\":%lu}",
             b->running ? "true" : "false", b->controller.pwm_percent,

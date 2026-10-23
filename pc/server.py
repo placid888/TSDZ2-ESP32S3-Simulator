@@ -15,6 +15,8 @@ import serial
 from serial.tools import list_ports
 from scenarios import ScenarioRunner
 from report_store import ReportStore
+from provenance import source_identity
+PC_IDENTITY = source_identity()
 
 RANGES = {"BATTERY": (0, 60), "CADENCE": (0, 200), "TORQUE": (0, 200),
           "GRADE": (-30, 30), "PWM": (0, 100), "BRAKE": (0, 1)}
@@ -44,6 +46,8 @@ class BenchLink:
         self.port = None
         self.port_name = None
         self.telemetry = None
+        self.device_info = None
+        self.pc_identity = PC_IDENTITY
         self.updated = 0
         self.samples = deque(maxlen=1200)
         self.events = deque(maxlen=60)
@@ -53,7 +57,7 @@ class BenchLink:
     def event(self, message):
         self.events.append({"time": time.time(), "message": message})
 
-    def _line(self, command, telemetry=False):
+    def _line(self, command, telemetry=False, info=False):
         if not self.port:
             raise ValueError("尚未連接 ESP32")
         self.port.write((command + "\n").encode("ascii"))
@@ -66,6 +70,13 @@ class BenchLink:
             line = raw.decode("utf-8", errors="replace").strip()
             if line.startswith("ERR"):
                 raise ValueError("ESP32: " + line)
+            if info and line.startswith('{'):
+                value=json.loads(line)
+                if (not isinstance(value,dict) or value.get('type')!='device_info' or value.get('protocol')!=1
+                    or not isinstance(value.get('version'),str) or not isinstance(value.get('elf_sha256'),str)
+                    or len(value['elf_sha256'])!=64 or any(c not in '0123456789abcdef' for c in value['elf_sha256'])):
+                    raise ValueError('ESP32 回報無效版本資訊')
+                return value
             if telemetry and line.startswith("{"):
                 value = json.loads(line)
                 if value.get("type") != "telemetry" or value.get("protocol") != 1:
@@ -74,7 +85,7 @@ class BenchLink:
                 if any(not isinstance(value.get(k), (int, float)) or not math.isfinite(value[k]) for k in required):
                     raise ValueError("ESP32 回報無效數據")
                 return value
-            if not telemetry and line == "OK":
+            if not telemetry and not info and line == "OK":
                 return
         raise TimeoutError("ESP32 回應逾時；請確認已燒入支援 TELEMETRY 的串口版韌體")
 
@@ -102,10 +113,13 @@ class BenchLink:
             port.open()
             self.port, self.port_name = port, name
             self.telemetry = None
+            self.device_info = None
             self.samples.clear()
             try:
                 time.sleep(0.3)
                 self._refresh()
+                if self.telemetry.get("info_api")==1:
+                    self.device_info=self._line("INFO",info=True)
                 self.event(f"已連接 {name} · 115200 baud · protocol 1")
             except Exception:
                 port.close()
@@ -165,6 +179,7 @@ class BenchLink:
             age = time.monotonic() - self.updated if self.updated else None
             return {"connected": bool(self.port), "port": self.port_name,
                     "age_s": age, "stale": age is None or age > 2.5,
+                    "device_info":self.device_info,"pc_identity":self.pc_identity,
                     "telemetry": self.telemetry, "samples": list(self.samples)[-240:],
                     "events": list(self.events), "error": self.error}
 
