@@ -7,7 +7,7 @@ for (const [id,label,sub,unit,min,max,value] of fields) {
   row.innerHTML=`<label for="${id}">${label}<small>${sub}</small></label><div class="value"><input id="${id}" type="number" min="${min}" max="${max}" value="${value}" step="1" required><span>${unit}</span></div>`;
   $('fields').append(row);
 }
-for(let i=0;i<8;i++) { const el=document.createElement('div'); el.className='channel'; el.innerHTML=`<small>CH${i+1} · ${['電流','扭力','電壓','油門','預留','預留','預留','預留'][i]}</small><b id="dac${i}">—</b>`; $('dacChannels').append(el); }
+for(let i=0;i<8;i++) { const el=document.createElement('div'); el.className='channel'; el.innerHTML=`<small>CH${i+1} · ${['電流','扭力','電壓','油門','預留','預留','預留','預留'][i]}</small><b id="dac${i}">—</b><small id="dacVolt${i}">— V</small><meter id="dacMeter${i}" min="0" max="65535" value="0" aria-label="CH${i+1} 數位碼"></meter>`; $('dacChannels').append(el); }
 function notice(text,error=false){$('notice').textContent=text;$('notice').className='notice'+(error?' error':'');}
 async function api(path,data){
   const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),12000);
@@ -162,6 +162,17 @@ function plot(id,samples,key,color){
   const points=data.map(s=>`${pad+(s.time-(latest-60))/60*(w-pad)},${h-8-(s[key]/max)*(h-16)}`).join(' ');
   svg.innerHTML=`<path d="M${pad} 8H${w}M${pad} ${h/2}H${w}M${pad} ${h-8}H${w}" stroke="#2a3837" fill="none" stroke-dasharray="3 5"/><text x="0" y="12" fill="#789084" font-size="8">${max.toFixed(0)}</text><text x="0" y="${h-7}" fill="#789084" font-size="8">0</text><polyline points="${points}" stroke="${color}" stroke-width="2" fill="none" vector-effect="non-scaling-stroke"/>`;
 }
+function renderDac(t,fresh){
+  $('dacMode').textContent=t.dac_backend.toUpperCase()+(fresh?'':' · 舊資料');
+  const gain=Number($('dacGain').value);
+  for(let i=0;i<8;i++){
+    const code=t.dac_codes[i];
+    $('dac'+i).textContent=code;
+    $('dacVolt'+i).textContent=(fresh?'理想 ':'舊資料 ')+(2.5*gain*code/65536).toFixed(4)+' V';
+    $('dacMeter'+i).value=code;
+  }
+}
+$('dacGain').onchange=()=>{if(state?.telemetry)renderDac(state.telemetry,state.connected&&!state.stale);};
 function render(s){
   if(transportError){notice(s.connected?'PC 服務已恢復，裝置數據已更新。':'PC 服務已恢復，請連接 ESP32。');transportError=false;}
   state=s;const t=s.telemetry,ok=s.connected&&!s.stale;
@@ -180,7 +191,7 @@ function render(s){
     $('rotor').style.animationPlayState=ok&&t.rpm>1?'running':'paused';$('rotor').style.animationDuration=Math.max(.2,60/Math.max(1,t.rpm)*10)+'s';
     $('hall').textContent=t.hall.toString(2).padStart(3,'0').split('').join(' ');$('pas').textContent=fmt(t.pas_hz)+' Hz';$('wheel').textContent=fmt(t.wheel_hz,2)+' Hz';$('brakeState').textContent=(t.effective_brake??t.brake)?'已啟用':'已解除';
     $('brake').textContent=t.brake?'解除煞車':'啟用煞車';$('brake').classList.toggle('active',t.brake);
-    $('dacMode').textContent=t.dac_backend.toUpperCase();for(let i=0;i<8;i++)$('dac'+i).textContent=t.dac_codes[i];
+    renderDac(t,ok);
     if(!initialized&&ok){for(const [id,key]of [['BATTERY','battery_open_circuit_v'],['CADENCE','cadence_rpm'],['TORQUE','torque_nm'],['GRADE','grade_percent'],['PWM','pwm_percent']])$(id).value=t[key];$('pwmRange').value=t.pwm_percent;initialized=true;}
   }
   if(!s.connected)initialized=false;

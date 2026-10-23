@@ -153,3 +153,11 @@ API：`POST /api/fault`，JSON `{"fault":"PAS_LOSS"}`（其他值見表格）；
 `POST /api/test/start`，JSON `{"kind":"faults"}` 啟動八項測試。
 CSV 新增 fault、effective_cadence_rpm、effective_torque_nm、effective_brake 欄位。
 既有 cadence_rpm、torque_nm、brake 仍表示原設定，UI 同時顯示有效輸入。
+
+## DAC 到貨前的通道檢視
+
+每通道顯示 ESP32 回傳的 16-bit code、比例條與理想電壓。換算使用 `2.5 × gain × code / 65536`；gain 1 對應 A/B，gain 2 對應 C/D。預設 gain 2 是預覽假設，必須核對到貨完整型號。選項只影響 PC 顯示，不送出控制命令、不代表實測電壓，也不是 TSDZ 感測器校正。
+
+資料過期時標示舊資料。STOP 後八通道歸零。比例模型仍是 CH1 40 A、CH2 200 Nm、CH3 60 V；CH4–8 保持零。SPI 目前仍為 zero-only。
+
+依據：[TI DAC8568 datasheet](https://www.ti.com/lit/ds/symlink/dac8568.pdf)。硬體到貨後先記錄完整型號、供電與參考電壓，再量測零點、中點、滿量程附近；尚不填入 STM8 pin mapping。

@@ -36,7 +36,8 @@ esp_err_t dac8568_init(Dac8568 *d, DacMode mode) {
     }
     /* Reset, override LDAC on all channels, zero, then enable internal ref.
        On 16-pin parts CLR must be held high; LDAC may be tied high.
-       Internal reference implies a nominal 5 V full-scale output. */
+       Internal reference: nominal 2.5 V span for A/B grades, 5 V for C/D.
+       Confirm full part number and supply before implementing nonzero SPI output. */
     esp_err_t err = send_frame(d, 0x07000000);
     if (err == ESP_OK) err = send_frame(d, 0x060000ff);
     if (err == ESP_OK) err = dac8568_zero(d);
