@@ -1,0 +1,80 @@
+#include "bench_model.h"
+#include "board_config.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static float clamp(float x, float lo, float hi) { return fminf(hi, fmaxf(lo, x)); }
+void bench_init(VirtualBench *b) {
+    memset(b, 0, sizeof(*b));
+    b->battery = (VirtualBattery){48, 48, 0, 0.15f};
+    b->controller.fake = true;
+}
+void bench_step(VirtualBench *b, float dt) {
+    if (!isfinite(dt) || dt <= 0 || dt > 0.1f) return;
+    if (!b->running) return;
+    float duty = b->brake ? 0 : b->controller.pwm_percent / 100.0f;
+    /* Simple first-order plant. Grade increases load; no regeneration model. */
+    float load = clamp(1 + b->grade_percent * 0.025f, 0.25f, 2);
+    float target = duty * 4000 * (b->battery.open_circuit_v / 48) / load;
+    b->motor.rpm += (target - b->motor.rpm) * (1 - expf(-dt / (b->brake ? 0.15f : 1.5f)));
+    b->motor.current_a = duty * (2 + 18 * load * clamp(1 - b->motor.rpm / 4000, 0, 1));
+    b->motor.erps = b->motor.rpm / 60 * BENCH_POLE_PAIRS;
+    b->battery.current_a = b->motor.current_a;
+    b->battery.terminal_v = fmaxf(0, b->battery.open_circuit_v - b->battery.current_a * b->battery.resistance_ohm);
+    SignalGenerator *s = &b->signals;
+    s->hall_hz = b->motor.erps;
+    s->pas_hz = b->rider.cadence_rpm / 60 * BENCH_PAS_PULSES;
+    s->wheel_hz = b->motor.rpm / 60 / BENCH_GEAR_RATIO;
+    s->hall_phase = fmod(s->hall_phase + s->hall_hz * dt, 1);
+    s->pas_phase = fmod(s->pas_phase + s->pas_hz * dt, 1);
+    s->wheel_phase = fmod(s->wheel_phase + s->wheel_hz * dt, 1);
+    const uint8_t sequence[] = {1, 5, 4, 6, 2, 3};
+    s->hall = sequence[(unsigned)(s->hall_phase * 6) % 6];
+    s->pas = s->pas_hz > 0 && s->pas_phase < 0.5;
+    s->wheel = s->wheel_hz > 0 && s->wheel_phase < 0.5;
+    s->brake = b->brake;
+}
+bool bench_command(VirtualBench *b, const char *line, char *reply, size_t size) {
+    char verb[16], key[16], value[40], extra[2];
+    int n = sscanf(line, "%15s %15s %39s %1s", verb, key, value, extra);
+    if (n == 1 && !strcmp(verb, "STATUS")) {
+        snprintf(reply, size, "OK running=%d input=fake pwm=%.1f battery_v=%.3f current_a=%.3f rpm=%.2f erps=%.2f cadence_rpm=%.1f torque_nm=%.1f grade_pct=%.1f brake=%d hall=%u pas_hz=%.2f wheel_hz=%.2f",
+            b->running, b->controller.pwm_percent, b->battery.terminal_v, b->motor.current_a,
+            b->motor.rpm, b->motor.erps, b->rider.cadence_rpm, b->rider.torque_nm,
+            b->grade_percent, b->brake, b->signals.hall, b->signals.pas_hz, b->signals.wheel_hz);
+        return true;
+    }
+    if (n == 1 && !strcmp(verb, "RUN")) { b->running = true; }
+    else if (n == 1 && !strcmp(verb, "STOP")) {
+        b->running = false;
+        b->controller.pwm_percent = 0;
+        b->motor = (VirtualMotor){0};
+        b->battery.current_a = 0;
+        b->battery.terminal_v = b->battery.open_circuit_v;
+        b->signals = (SignalGenerator){0};
+    } else if (n == 3 && !strcmp(verb, "SET")) {
+        char *end;
+        float x = strtof(value, &end);
+        if (*end || !isfinite(x)) goto error;
+        float *dest = NULL, lo = 0, hi = 0;
+        if (!strcmp(key, "BATTERY")) { dest = &b->battery.open_circuit_v; lo = 0; hi = 60; }
+        else if (!strcmp(key, "CADENCE")) { dest = &b->rider.cadence_rpm; hi = 200; }
+        else if (!strcmp(key, "TORQUE")) { dest = &b->rider.torque_nm; hi = 200; }
+        else if (!strcmp(key, "GRADE")) { dest = &b->grade_percent; lo = -30; hi = 30; }
+        else if (!strcmp(key, "PWM")) { dest = &b->controller.pwm_percent; hi = 100; }
+        else if (!strcmp(key, "BRAKE")) {
+            if (x != 0 && x != 1) goto error;
+            b->brake = x == 1;
+            b->signals.brake = b->running && b->brake;
+            snprintf(reply, size, "OK"); return true;
+        } else goto error;
+        if (x < lo || x > hi) goto error;
+        *dest = x;
+        b->battery.terminal_v = fmaxf(0, b->battery.open_circuit_v - b->battery.current_a * b->battery.resistance_ohm);
+    } else goto error;
+    snprintf(reply, size, "OK"); return true;
+error:
+    snprintf(reply, size, "ERR command or value out of range"); return false;
+}
