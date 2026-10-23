@@ -29,6 +29,10 @@ idf.py -B build-bench -D SDKCONFIG=build-bench/sdkconfig flash monitor
 Alternatively enable Virtual Bench in `idf.py menuconfig`. Select mock,
 disabled, or SPI DAC backend there. Use separate build/config directories so
 switching modes does not silently reuse the other configuration.
+For a CH343/CP210x USB-UART bridge, replace `sdkconfig.bench` with
+`sdkconfig.bench-uart` in the fresh-build command above. That preset uses the
+default UART0 console at 115200 baud; the USB Serial/JTAG preset needs the
+board's native USB connection for CLI input.
 The USB Serial/JTAG console carries newline-terminated, uppercase commands.
 CR, LF and CRLF are accepted. Maximum line length is 127 bytes; oversized lines
 are discarded through the next newline. Invalid commands do not mutate state.
