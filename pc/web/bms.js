@@ -99,7 +99,7 @@ $('bmsHistoryRefresh').onclick=loadBmsHistory;
 loadBmsHistory();
 
 let bmsCompareRequest=0;
-function clearBmsComparison(){bmsCompareRequest++;$('bmsCompareTable').hidden=true;$('bmsCompareDownload').hidden=true;$('bmsCompareMessage').textContent='差值＝比較對象 − 基準；僅使用歷史資料，不連接電池。';}
+function clearBmsComparison(){bmsCompareRequest++;$('bmsCompareTable').hidden=true;$('bmsCompareDownload').hidden=true;$('bmsCompareCsv').hidden=true;$('bmsCompareMessage').textContent='差值＝比較對象 − 基準；僅使用歷史資料，不連接電池。';}
 $('bmsCompareBaseline').onchange=clearBmsComparison;
 $('bmsCompareTarget').onchange=clearBmsComparison;
 $('bmsCompareStart').onclick=async()=>{
@@ -117,6 +117,6 @@ $('bmsCompareStart').onclick=async()=>{
     }
     const date=t=>new Date(t*1000).toLocaleString('zh-TW',{hour12:false});
     $('bmsCompareMessage').textContent=`基準 ${date(data.baseline_captured_at)} → 對象 ${date(data.target_captured_at)}。${data.note}`;
-    $('bmsCompareTable').hidden=false;$('bmsCompareDownload').href='/api/'+path;$('bmsCompareDownload').hidden=false;
+    $('bmsCompareTable').hidden=false;$('bmsCompareDownload').href='/api/'+path;$('bmsCompareDownload').hidden=false;$('bmsCompareCsv').href='/api/'+path.replace('compare?','compare.csv?');$('bmsCompareCsv').hidden=false;
   }catch(e){if(request===bmsCompareRequest)$('bmsCompareMessage').textContent=e.message;}
 };

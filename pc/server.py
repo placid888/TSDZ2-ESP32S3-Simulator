@@ -28,7 +28,7 @@ from readiness import preparation
 from bench_bundle import bench_bundle
 from jk_bms import JkMonitor
 from bms_store import BmsStore
-from bms_compare import compare_snapshots
+from bms_compare import compare_snapshots, comparison_csv
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -256,10 +256,11 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == '/api/bms/state':
             return self.respond(JK_BMS.snapshot())
-        if path == '/api/bms/compare':
+        if path in ('/api/bms/compare','/api/bms/compare.csv'):
             try:
                 query=parse_qs(urlparse(self.path).query)
                 result=compare_snapshots(BMS_HISTORY.read(query['baseline'][0]),BMS_HISTORY.read(query['target'][0]))
+                if path.endswith('.csv'):return self.respond(comparison_csv(result),kind='text/csv; charset=utf-8',filename='bms-comparison.csv')
                 return self.respond(result,filename='bms-comparison.json')
             except (OSError,ValueError,TypeError,KeyError,OverflowError) as error:
                 return self.respond({'error':str(error) if isinstance(error,ValueError) else '快照不存在或無法讀取'},400)

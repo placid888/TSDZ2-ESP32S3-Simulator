@@ -18,3 +18,19 @@ def compare_snapshots(a, b):
             'elapsed_seconds':y['captured_at']-x['captured_at'],'metrics':metrics,
             'cells':[dict(cell=n,**metric('串電壓','V',xc[n]['voltage_v'],yc[n]['voltage_v'])) for n in sorted(xc)],
             'note':'差值＝比較對象 − 基準；不同時間與負載的差異不代表電池健康判定或 HIL 通過。'}
+
+
+def comparison_csv(result):
+    from datetime import datetime, timezone
+    from report_bundle import csv_bytes
+    common={key:result[key] for key in ('baseline_id','target_id','address','elapsed_seconds')}
+    for prefix in ('baseline','target'):
+        common[prefix+'_captured_at_utc']=datetime.fromtimestamp(result[prefix+'_captured_at'],timezone.utc).isoformat()
+    common['scope']=result['scope']
+    rows=[]
+    for category,items in [('pack',result['metrics']),('cell',result['cells'])]:
+        for item in items:
+            rows.append({**common,'category':category,'cell':item.get('cell'),
+                         'label':item['label'],'unit':item['unit'],'baseline':item['baseline'],
+                         'target':item['target'],'delta_target_minus_baseline':item['delta']})
+    return csv_bytes(rows)
