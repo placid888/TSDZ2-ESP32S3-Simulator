@@ -21,6 +21,7 @@ function enabled(){
   for(const id of ['rideSave','rideLoad','rideAdd'])$(id).disabled=busy||active;
   for(const input of document.querySelectorAll('#rideFields input,#rideSteps input,#rideSteps button'))input.disabled=busy||active;
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
+  $('quickStop').disabled=$('stop').disabled;
   $('stm8Save').disabled=busy||active;
   $('stm8Source').disabled=busy||active;
   $('androidLaunch').disabled=busy||active||androidScanning||androidCapturing||!androidSelectedReady;
@@ -48,6 +49,7 @@ async function action(path,data,success){
 }
 async function ports(){try{const list=await api('ports');const selected=$('ports').value;$('ports').replaceChildren();for(const p of list){const o=document.createElement('option');o.value=p.device;o.textContent=`${p.device} · ${p.description}`;$('ports').append(o);}if(list.some(p=>p.device===selected))$('ports').value=selected;else if(list.some(p=>p.device==='COM5'))$('ports').value='COM5';}catch(e){notice(e.message,true);}}
 $('refresh').onclick=ports;
+$('quickStop').onclick=()=>$('stop').click();
 $('connect').onclick=()=>state?.connected?action('disconnect',{},'連線已中斷，裝置 STOP 確認結果請見操作紀錄。'):action('connect',{port:$('ports').value},'ESP32 已連接。請套用設定，再開始運轉。');
 $('settings').onsubmit=e=>{e.preventDefault();const settings={};for(const [id]of fields)settings[id]=Number($(id).value);settings.PWM=Number($('PWM').value);action('settings',{settings},'設定已套用至 ESP32。');};
 $('PWM').oninput=()=>{$('pwmRange').value=$('PWM').value;};$('pwmRange').oninput=()=>{$('PWM').value=$('pwmRange').value;};
