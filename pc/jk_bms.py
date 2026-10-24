@@ -1,11 +1,13 @@
-"""BLE advertisement discovery and explicit local JK BMS target registration only."""
+"""BLE discovery, explicit JK BMS registration and bounded query-only snapshots."""
 import asyncio
 import importlib.util
 import json
 import re
 import threading
 import time
+import copy
 from pathlib import Path
+from jk_reader import read_snapshot
 
 
 def valid_address(value):
@@ -23,6 +25,7 @@ class JkMonitor:
     def __init__(self, path, scanner=discover):
         self.path=Path(path); self.scanner=scanner; self.lock=threading.RLock(); self.scan_lock=threading.Lock()
         self.devices=[]; self.selected=None; self.scanned_at=None; self.updated=0; self.error=None; self.config_error=None
+        self.telemetry=None;self.telemetry_address=None;self.reading=False
         if self.path.exists():
             try:
                 data=json.loads(self.path.read_text(encoding='utf-8'))
@@ -37,8 +40,26 @@ class JkMonitor:
             return {'tool_available':importlib.util.find_spec('bleak') is not None,
                     'devices':[dict(d) for d in self.devices], 'selected_address':self.selected,
                     'scanned_at':self.scanned_at, 'scan_recent':recent, 'error':self.error or self.config_error,
-                    'protocol_verified':False,'connected':False,'telemetry':None,
-                    'scope':'BLE advertisement discovery only; no GATT connection or BMS commands'}
+                    'protocol_verified':bool(self.telemetry and self.telemetry_address==self.selected),
+                    'connected':False,'reading':self.reading,'telemetry':copy.deepcopy(self.telemetry),
+                    'scope':'Explicit single snapshot; only 0x97/0x96 queries; disconnect after read'}
+
+    def read(self, reader=read_snapshot):
+        if not self.scan_lock.acquire(blocking=False):raise ValueError('BMS 操作正在進行')
+        try:
+            with self.lock:
+                if self.config_error or not self.selected:raise ValueError('請先登記明確的 BMS 藍牙位址')
+                address=self.selected;self.reading=True;self.error=None
+            try:
+                async def bounded():return await asyncio.wait_for(reader(address),35)
+                data=asyncio.run(bounded())
+                with self.lock:self.telemetry=data;self.telemetry_address=address
+            except Exception as exc:
+                with self.lock:self.error='BMS 讀取失敗；先前快照不代表目前狀態：'+(str(exc) or type(exc).__name__)[:240]
+            finally:
+                with self.lock:self.reading=False
+            return self.snapshot()
+        finally:self.scan_lock.release()
 
     def scan(self):
         if not self.scan_lock.acquire(blocking=False):raise ValueError('BMS 藍牙掃描正在進行')
@@ -67,6 +88,7 @@ class JkMonitor:
 
     def select(self, address):
         with self.lock:
+            if self.reading:raise ValueError('BMS 讀取期間不可切換目標')
             if self.config_error:raise ValueError(self.config_error)
             if not valid_address(address):raise ValueError('請明確選擇掃描到的 BMS 裝置')
             if self.error or not self.updated or time.monotonic()-self.updated>60:raise ValueError('請先重新掃描 BMS 藍牙')
@@ -74,5 +96,6 @@ class JkMonitor:
             if sum(d['address']==address for d in self.devices)!=1:raise ValueError('裝置未出現或位址不唯一')
             self.path.parent.mkdir(parents=True,exist_ok=True)
             temp=self.path.with_suffix('.tmp');temp.write_text(json.dumps({'schema':1,'address':address}),encoding='utf-8');temp.replace(self.path)
+            if self.selected!=address:self.telemetry=None;self.telemetry_address=None
             self.selected=address
             return self.snapshot()

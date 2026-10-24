@@ -372,10 +372,11 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("JSON request must be an object")
             path = urlparse(self.path).path
-            if path in ('/api/bms/scan','/api/bms/select'):
+            if path in ('/api/bms/scan','/api/bms/select','/api/bms/read'):
                 with LINK.lock:
                     if RUNNER.active:raise ValueError('請先結束自動測試，再操作 BMS 掃描與登記')
-                return self.respond({'ok':True,'bms':JK_BMS.scan() if path.endswith('/scan') else JK_BMS.select(data.get('address'))})
+                result=JK_BMS.scan() if path.endswith('/scan') else JK_BMS.read() if path.endswith('/read') else JK_BMS.select(data.get('address'))
+                return self.respond({'ok':True,'bms':result})
             if path == '/api/stm8/source':
                 with LINK.lock:
                     if RUNNER.active:raise ValueError('請先結束正在執行的測試')

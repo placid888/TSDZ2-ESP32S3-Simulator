@@ -5,7 +5,7 @@
 
 ## 啟動
 
-JK BMS 電池工作台已提供 BLE 掃描與唯一裝置登記；需安裝 `pc/requirements.txt` 的 Bleak。尚未提供 GATT 連線或電池數據讀取，詳細範圍與接入順序見 [JK BMS 藍牙接入](../docs/jk-bms-bluetooth.md)。
+JK BMS 電池工作台已提供 BLE 掃描與唯一裝置登記；需安裝 `pc/requirements.txt` 的 Bleak。已加入指定 JK-BD6A17S6P HW10.XW/SW10.07 的單次電池查詢；完成後斷線，沒有充放電開關控制。詳細範圍與接入順序見 [JK BMS 藍牙接入](../docs/jk-bms-bluetooth.md)。
 
 置頂快速導覽可跳至準備總覽、電機控制、自動測試、騎乘流程、手機、STM8、裝置管理與歷史報告。窄版可水平捲動導覽項目；目標區塊預留置頂列空間。導覽不會送出設備指令或改動設定。
 
