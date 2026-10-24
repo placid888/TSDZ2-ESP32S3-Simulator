@@ -55,7 +55,28 @@ $('bmsSave').onclick=async()=>{
 api('bms/state').then(renderBms).catch(e=>$('bmsMessage').textContent=e.message);
 $('bmsRead').onclick=async()=>{
   if(bmsBusy)return;bmsBusy=true;enabled();$('bmsMessage').textContent='正在查詢裝置版本與電池狀態；完成後斷線…';
-  try{const r=await api('bms/read',{},45000);renderBms(r.bms);if(!r.bms.error)$('bmsMessage').textContent='單次資料讀取完成，已結束藍牙連線。';}
+  try{const r=await api('bms/read',{},45000);renderBms(r.bms);if(!r.bms.error)$('bmsMessage').textContent=r.save_error||'單次資料讀取完成，已斷線並保存快照。';await loadBmsHistory();}
   catch(e){$('bmsMessage').textContent=e.message;}
   finally{bmsBusy=false;enabled();}
 };
+
+async function loadBmsHistory(){
+  $('bmsHistoryRefresh').disabled=true;
+  try{
+    const data=await api('bms/snapshots');$('bmsHistoryList').replaceChildren();
+    $('bmsHistoryMessage').textContent=`已保存 ${data.snapshots.length} 份快照${data.skipped?`，略過 ${data.skipped} 份無效檔案`:''}；以下為歷史紀錄，不代表目前電池狀態。`;
+    for(const item of data.snapshots){
+      const row=document.createElement('div');row.className='device-card';
+      const title=document.createElement('p');title.textContent=`${new Date(item.captured_at*1000).toLocaleString('zh-TW',{hour12:false})} · ${item.pack_voltage_v.toFixed(3)} V · ${item.cell_count} 串`;
+      const target=document.createElement('p');target.textContent='保護板：'+item.address;
+      row.append(title,target);
+      for(const [ext,label] of [['json','完整快照 JSON'],['csv','每串資料 CSV']]){
+        const link=document.createElement('a');link.href=`/api/bms/snapshots/${item.id}.${ext}`;link.download=`bms-${item.id}.${ext}`;link.textContent=label;row.append(link);
+      }
+      $('bmsHistoryList').append(row);
+    }
+  }catch(e){$('bmsHistoryMessage').textContent=e.message;}
+  finally{$('bmsHistoryRefresh').disabled=false;}
+}
+$('bmsHistoryRefresh').onclick=loadBmsHistory;
+loadBmsHistory();

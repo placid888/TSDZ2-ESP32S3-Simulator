@@ -27,6 +27,7 @@ from android_app import launch_selected
 from readiness import preparation
 from bench_bundle import bench_bundle
 from jk_bms import JkMonitor
+from bms_store import BmsStore
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -217,6 +218,7 @@ REPORTS = ReportStore(RUNNER.reports)
 STATIC = Path(__file__).with_name("web")
 STM8 = Stm8Workbench(Path(__file__).with_name("local")/"stm8_project.json")
 JK_BMS = JkMonitor(Path(__file__).with_name('local')/'jk_bms.json')
+BMS_HISTORY = BmsStore(Path(__file__).with_name('local')/'bms_snapshots')
 STM8_BUILD = Stm8Artifacts(Path(__file__).with_name('local')/'stm8-build')
 CAPTURES = CaptureStore(Path(__file__).with_name("local")/"android_captures")
 ANDROID = AndroidMonitor(Path(__file__).with_name("local")/"android_target.json")
@@ -253,6 +255,16 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == '/api/bms/state':
             return self.respond(JK_BMS.snapshot())
+        if path == '/api/bms/snapshots':
+            return self.respond(BMS_HISTORY.listing())
+        if path.startswith('/api/bms/snapshots/'):
+            name=path[len('/api/bms/snapshots/'):]
+            try:
+                if name.endswith('.json'):return self.respond(BMS_HISTORY.read(name[:-5]),filename=name)
+                if name.endswith('.csv'):return self.respond(BMS_HISTORY.csv(name[:-4]),kind='text/csv; charset=utf-8',filename=name)
+                raise ValueError('快照檔案類型無效')
+            except (OSError,ValueError,TypeError,KeyError,OverflowError):
+                return self.respond({'error':'BMS 快照不存在或校驗失敗'},404)
         if path in ('/api/readiness', '/api/readiness/report', '/api/bench-bundle'):
             motor = LINK.snapshot()
             stm8 = STM8.snapshot()
@@ -376,7 +388,11 @@ class Handler(BaseHTTPRequestHandler):
                 with LINK.lock:
                     if RUNNER.active:raise ValueError('請先結束自動測試，再操作 BMS 掃描與登記')
                 result=JK_BMS.scan() if path.endswith('/scan') else JK_BMS.read() if path.endswith('/read') else JK_BMS.select(data.get('address'))
-                return self.respond({'ok':True,'bms':result})
+                saved=None;save_error=None
+                if path.endswith('/read') and not result['error']:
+                    try:saved=BMS_HISTORY.save(result,PC_IDENTITY)
+                    except (OSError,ValueError,TypeError,KeyError):save_error='讀取成功，但快照未能保存到本機'
+                return self.respond({'ok':True,'bms':result,'saved_snapshot':saved,'save_error':save_error})
             if path == '/api/stm8/source':
                 with LINK.lock:
                     if RUNNER.active:raise ValueError('請先結束正在執行的測試')
