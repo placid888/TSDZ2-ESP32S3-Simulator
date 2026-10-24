@@ -251,3 +251,11 @@ ST-Link 名稱與驅動狀態僅供辨識，swim_verified 永遠為 false，prog
 STM8 工作台可讀取 `pc/local/stm8-build/build-report.json` 及 `firmware.hex`，重新核對 HEX 記錄和報告中的 SHA-256、資料範圍。缺檔、報告不符或校驗失敗時不顯示通過；目前登記來源不同時會顯示來源不符。只讀取固定本機路徑，不接受網頁指定的檔案路徑，也不啟動編譯器或燒錄工具。
 
 `GET /api/stm8/build` 回傳檢視狀態；`GET /api/stm8/build/report` 下載已通過檔案核對的原始編譯報告，無有效產物時為 404。沒有上傳、執行或燒錄端點。來源與編譯操作見 [離線編譯說明](../docs/stm8-offline-build.md)。
+
+## 啟動 Android TSDZ App
+
+先偵測並指定已授權手機，再按「啟動原作者 TSDZ App」。`POST /api/android/launch` 重新確認同一序號仍唯一且已授權，查詢固定套件是否安裝，再啟動其 MainActivity；不接受客戶端提供套件名或任意指令。自動 ESP32 測試期間拒絕啟動操作。
+
+入口依據[原作者 AndroidManifest.xml](https://github.com/TSDZ2-ESP32/TSDZ2-Android/blob/master/app/src/main/AndroidManifest.xml)：`spider65.ebike.tsdz2_esp32/.MainActivity`。使用明確 `adb -s`、固定 `pm path` / `am start -W -n`，不安裝 APK、授權權限或操作 App 內設定。App 自身啟動後的行為由該 App 決定。Android 回報啟動成功不等於 BLE、Gateway 或 STM8 已驗證。
+
+成功路徑以測試替身驗證；目前未接入測試手機，實機啟動與真 BLE 回歸仍待驗證。

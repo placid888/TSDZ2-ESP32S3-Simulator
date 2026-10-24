@@ -23,6 +23,7 @@ from android_capture import CaptureStore, capture_selected
 from ride_plan import read_plan, save_plan
 from stm8_workbench import Stm8Workbench
 from stm8_artifacts import Stm8Artifacts
+from android_app import launch_selected
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -355,6 +356,10 @@ class Handler(BaseHTTPRequestHandler):
                 with LINK.lock:
                     if RUNNER.active:raise ValueError('請先結束正在執行的自動測試')
                 return self.respond({'ok':True,'capture':capture_selected(ANDROID,CAPTURES,PC_IDENTITY)})
+            if path == '/api/android/launch':
+                with LINK.lock:
+                    if RUNNER.active:raise ValueError('請先結束正在執行的自動測試')
+                return self.respond({'ok':True,'app':launch_selected(ANDROID)})
             if path == '/api/android/select':
                 with LINK.lock:
                     if RUNNER.active:raise ValueError('請先結束正在執行的測試')

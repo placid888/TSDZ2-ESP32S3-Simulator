@@ -55,3 +55,10 @@ $('androidCapture').onclick=async()=>{
   finally{androidCapturing=false;enabled();}
 };
 loadAndroidCaptures();
+$('androidLaunch').onclick=async()=>{
+  if(androidCapturing)return;androidCapturing=true;enabled();
+  $('androidCaptureStatus').textContent='正在確認測試手機與 App…';
+  try{await api('android/launch',{},30000);$('androidCaptureStatus').textContent='Android 已確認 App 啟動；BLE 連線尚未驗證，可擷取手機畫面查看。';}
+  catch(e){$('androidCaptureStatus').textContent=e.message;}
+  finally{try{renderAndroid(await api('android/state'));}catch(_){}androidCapturing=false;enabled();}
+};

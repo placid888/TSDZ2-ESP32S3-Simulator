@@ -23,6 +23,7 @@ function enabled(){
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
   $('stm8Save').disabled=busy||active;
   $('stm8Source').disabled=busy||active;
+  $('androidLaunch').disabled=busy||active||androidScanning||androidCapturing||!androidSelectedReady;
   $('androidCapture').disabled=busy||active||androidScanning||androidCapturing||!androidSelectedReady;
   $('androidScan').disabled=androidScanning||androidCapturing||!androidInitialized;
   $('androidSave').disabled=busy||active||androidScanning||androidCapturing||!androidReady;$('androidTarget').disabled=busy||active||androidScanning||androidCapturing;
