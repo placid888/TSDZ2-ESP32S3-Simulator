@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let motorAvailable=false;
+let motorAvailable=false,androidScanning=false,androidReady=false;
 let state = null, busy = false, lastEvent = '', initialized = false, transportError = false, lastTestResult = '';
 const fields = [ ['BATTERY','電池電壓','OPEN CIRCUIT','V',0,60,48], ['CADENCE','踩踏頻率','CADENCE','RPM',0,200,80], ['TORQUE','踩踏扭力','PEDAL TORQUE','Nm',0,200,60], ['GRADE','道路坡度','ROAD GRADE','%',-30,30,0] ];
 for (const [id,label,sub,unit,min,max,value] of fields) {
@@ -21,6 +21,7 @@ function enabled(){
   for(const id of ['rideSave','rideLoad','rideAdd'])$(id).disabled=busy||active;
   for(const input of document.querySelectorAll('#rideFields input,#rideSteps input,#rideSteps button'))input.disabled=busy||active;
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
+  $('androidSave').disabled=busy||active||androidScanning||!androidReady;$('androidTarget').disabled=busy||active||androidScanning;
   $('registeredMotor').disabled=busy||active||!!state?.connected||!motorAvailable;
   $('deviceSave').disabled=busy||active;$('deviceClear').disabled=busy||active;
   $('connect').disabled=busy||active;$('ports').disabled=!!state?.connected||busy;

@@ -214,3 +214,14 @@ CSV 為 UTF-8 BOM，巢狀欄位以 JSON 文字保存；以 =、+、-、@ 開始
 流程先 STOP 並重設初始條件，第一步 RUN，後續步驟連續套用設定。各步使用新鮮採樣、檢查設定回報與數據範圍，煞車時檢查電流歸零；不將此結果當作實車性能驗證。結尾與失敗/中止均沿用 STOP 清理，報告保存完整 plan 與各步實測值、版本資料。相同計畫的兩份成功報告可比較。
 
 `GET /api/ride-plan` 讀取 PC 保存的計畫（尚未保存時提供預設）；`POST /api/ride-plan` 使用 `{"plan":{...}}` 保存至 `pc/local/ride_plan.json`。保存/載入不送裝置指令；自動測試執行中禁止保存。第一版保存一份 PC 共用計畫，另可由歷史報告與 ZIP 保留完整舊計畫。流程內故障刺激與多裝置步驟尚未加入，既有故障測試仍可獨立執行。
+## Android 偵測與測試目標
+
+控制台可手動偵測 ADB 裝置，區分 device（已授權）、unauthorized、offline 及其他模式。ADB 會從 ANDROID_SDK_ROOT / ANDROID_HOME、Windows 使用者 Android SDK 標準位置與 PATH 尋找，不修改 PATH 或另裝軟體。
+
+`GET /api/android/state` 只讀取快照與工具是否存在，不執行 ADB；`GET /api/android/scan` 只執行固定的 `adb version`、`adb devices -l`，必要時由 ADB 啟動本機服務。執行不持有模擬器串口鎖，最長版本查詢 2 秒、裝置查詢 6 秒。沒有通用 shell 或任意命令 API。
+
+`POST /api/android/select` 使用 `{"serial":"裝置序號"}` 登記測試目標。需要 30 秒內的正常掃描、唯一序號、state=device；未授權/離線/歧義/過期快照均拒絕。不自動挑第一支手機；已登記手機拔除時保留其身分，不改選其他裝置。設定為 `pc/local/android_target.json`，不加入 Git，測試執行中禁止改目標。
+
+目前不提供 App 啟動、安裝、截圖、檔案讀取、重開機、無線配對或手機內的操作。需有實體測試手機並在手機自行啟用 USB 偵錯、確認 PC 授權後，才能驗證真正的已授權連線。
+
+官方說明：https://developer.android.com/tools/adb

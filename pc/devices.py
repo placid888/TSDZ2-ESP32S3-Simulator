@@ -4,6 +4,7 @@ import json
 import shutil
 import threading
 from pathlib import Path
+from android_device import find_adb
 
 ROLES={'motor':'ESP32-S3 模擬電機','gateway':'ESP32 Gateway','author_board':'原作者 ESP32 板（待確認）'}
 
@@ -74,7 +75,7 @@ class DeviceRegistry:
                               'connected':bool(role=='motor' and device and device['port']==connected_port),
                               'identity_note':'USB 序號識別' if saved and saved.get('stable_identity') else '無唯一 USB 序號，換接孔後須重新核對' if saved else '尚未指定'})
         return {'ports':inventory,'roles':roles,'error':self.error,
-                'tools':{'adb':bool(shutil.which('adb')),'stm8flash':bool(shutil.which('stm8flash')),
+                'tools':{'adb':bool(find_adb()),'stm8flash':bool(shutil.which('stm8flash')),
                          'st_link_cli':bool(shutil.which('ST-LINK_CLI'))},
                 'pending':[{'role':'stm8','label':'STM8 / ST-Link','status':'尚未接入；除錯器不以串口判定'},
-                           {'role':'android','label':'Android 測試手機','status':'尚未接入 ADB 掃描'}]}
+                           {'role':'android','label':'Android 測試手機','status':'請使用下方 Android 手機偵測'}]}

@@ -18,6 +18,7 @@ from report_store import ReportStore
 from report_compare import compare_reports
 from report_bundle import make_bundle
 from devices import DeviceRegistry
+from android_device import AndroidMonitor
 from ride_plan import read_plan, save_plan
 from provenance import source_identity
 PC_IDENTITY = source_identity()
@@ -207,6 +208,7 @@ LINK = BenchLink()
 RUNNER = ScenarioRunner(LINK)
 REPORTS = ReportStore(RUNNER.reports)
 STATIC = Path(__file__).with_name("web")
+ANDROID = AndroidMonitor(Path(__file__).with_name("local")/"android_target.json")
 RIDE_PLAN = Path(__file__).with_name("local")/"ride_plan.json"
 DEVICES = DeviceRegistry(Path(__file__).with_name("local")/"devices.json")
 
@@ -238,6 +240,10 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path == '/api/android/state':
+            return self.respond(ANDROID.snapshot())
+        if path == '/api/android/scan':
+            return self.respond(ANDROID.scan())
         if path == '/api/ride-plan':
             try:return self.respond(read_plan(RIDE_PLAN))
             except (OSError,ValueError,TypeError):return self.respond({'error':'保存的流程無法讀取，原檔未修改'},400)
@@ -297,10 +303,10 @@ class Handler(BaseHTTPRequestHandler):
             writer.writeheader()
             writer.writerows(rows)
             return self.respond(content.getvalue(), kind="text/csv; charset=utf-8")
-        files = {"/": "index.html", "/app.js": "app.js", "/ride.js": "ride.js", "/style.css": "style.css"}
+        files = {"/": "index.html", "/app.js": "app.js", "/ride.js": "ride.js", "/android.js": "android.js", "/style.css": "style.css"}
         if path not in files:
             return self.respond({"error": "Not found"}, 404)
-        kind = {"/": "text/html", "/app.js": "text/javascript", "/ride.js": "text/javascript", "/style.css": "text/css"}[path]
+        kind = {"/": "text/html", "/app.js": "text/javascript", "/ride.js": "text/javascript", "/android.js": "text/javascript", "/style.css": "text/css"}[path]
         return self.respond((STATIC / files[path]).read_bytes(), kind=kind + "; charset=utf-8")
 
     def do_POST(self):
@@ -315,6 +321,10 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("JSON request must be an object")
             path = urlparse(self.path).path
+            if path == '/api/android/select':
+                with LINK.lock:
+                    if RUNNER.active:raise ValueError('請先結束正在執行的測試')
+                return self.respond({'ok':True,'android':ANDROID.select(data.get('serial'))})
             with LINK.lock:
                 if RUNNER.active and path not in ('/api/test/cancel','/api/command'):
                     raise ValueError('自動測試進行中，請先中止並等待停止確認')
