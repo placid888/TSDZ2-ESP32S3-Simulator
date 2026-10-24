@@ -14,6 +14,14 @@ API：`GET /api/bms/state`、`POST /api/bms/scan`、`POST /api/bms/select`（JSO
 
 ## 後續階段
 
+### 已完成的指定目標探索（2026-10-25）
+
+使用者提供 App 裝置清單後，已按照片中的完整位址核對唯一廣播並本機登記。完成一次 GATT 服務探索，以及一次標準 Device Information 讀取，兩次均於結束後斷線。服務包含 FFE0（FFE1 notify/write、FFE2 write-without-response）與標準 180A，未送出 JK 應用層命令、未訂閱通知、未修改設定。完整位址與探索結果只存忽略的 `pc/local/`。
+
+標準資訊回報 manufacturer `BEKEN SAS`、model `BK-BLE-1.0`、hardware `1.0.0`、firmware `6.1.2`、software `6.3.0`。這組內容指向 BLE 模組，不能據此認定是 JK 保護板主控韌體版本。JK 幀格式仍待透過已核對的裝置資訊查詢確認。
+
+App 截圖顯示 13 串有效電芯與當時 45.60V，僅作人工比對資料，不當成 PC 即時遙測。此階段服務探索為開發驗證，尚未加入網頁操作或電池資料讀取流程。
+
 1. 使用者確認藍牙裝置與板身標籤，提供極空 App 的硬體/軟體版本；必要時先讓手機 App 斷開，避免佔用連線。
 2. 對明確指定的保護板做服務探索，核對 UUID 與協定版本。
 3. 只實作經核對的查詢和通知接收、分包重組與校驗；保留原始測試資料於本機。
