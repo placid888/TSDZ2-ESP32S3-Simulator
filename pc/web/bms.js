@@ -75,6 +75,12 @@ async function loadBmsHistory(){
   $('bmsHistoryRefresh').disabled=true;
   try{
     const data=await api('bms/snapshots');$('bmsHistoryList').replaceChildren();
+    for(const id of ['bmsCompareBaseline','bmsCompareTarget']){
+      const select=$(id),previous=select.value;select.replaceChildren(new Option('請選擇快照',''));
+      for(const item of data.snapshots)select.append(new Option(`${new Date(item.captured_at*1000).toLocaleString('zh-TW',{hour12:false})} · ${item.address} · ${item.pack_voltage_v.toFixed(3)} V`,item.id));
+      if(data.snapshots.some(item=>item.id===previous))select.value=previous;
+    }
+    clearBmsComparison();
     $('bmsHistoryMessage').textContent=`已保存 ${data.snapshots.length} 份快照${data.skipped?`，略過 ${data.skipped} 份無效檔案`:''}；以下為歷史紀錄，不代表目前電池狀態。`;
     for(const item of data.snapshots){
       const row=document.createElement('div');row.className='device-card';
@@ -91,3 +97,26 @@ async function loadBmsHistory(){
 }
 $('bmsHistoryRefresh').onclick=loadBmsHistory;
 loadBmsHistory();
+
+let bmsCompareRequest=0;
+function clearBmsComparison(){bmsCompareRequest++;$('bmsCompareTable').hidden=true;$('bmsCompareDownload').hidden=true;$('bmsCompareMessage').textContent='差值＝比較對象 − 基準；僅使用歷史資料，不連接電池。';}
+$('bmsCompareBaseline').onchange=clearBmsComparison;
+$('bmsCompareTarget').onchange=clearBmsComparison;
+$('bmsCompareStart').onclick=async()=>{
+  clearBmsComparison();const request=bmsCompareRequest;
+  const baseline=$('bmsCompareBaseline').value,target=$('bmsCompareTarget').value;
+  if(!baseline||!target){$('bmsCompareMessage').textContent='請選擇基準與比較對象';return;}
+  const path=`bms/compare?baseline=${encodeURIComponent(baseline)}&target=${encodeURIComponent(target)}`;
+  try{
+    const data=await api(path);if(request!==bmsCompareRequest)return;
+    $('bmsCompareRows').replaceChildren();
+    for(const item of [...data.metrics,...data.cells.map(c=>({...c,label:`第 ${c.cell} 串`}))]){
+      const row=document.createElement('tr');
+      for(const text of [item.label,item.baseline.toFixed(3),item.target.toFixed(3),`${item.delta>0?'+':''}${item.delta.toFixed(3)} ${item.unit}`]){const td=document.createElement('td');td.textContent=text;row.append(td);}
+      $('bmsCompareRows').append(row);
+    }
+    const date=t=>new Date(t*1000).toLocaleString('zh-TW',{hour12:false});
+    $('bmsCompareMessage').textContent=`基準 ${date(data.baseline_captured_at)} → 對象 ${date(data.target_captured_at)}。${data.note}`;
+    $('bmsCompareTable').hidden=false;$('bmsCompareDownload').href='/api/'+path;$('bmsCompareDownload').hidden=false;
+  }catch(e){if(request===bmsCompareRequest)$('bmsCompareMessage').textContent=e.message;}
+};

@@ -281,3 +281,7 @@ STM8 工作台可讀取 `pc/local/stm8-build/build-report.json` 及 `firmware.he
 準備總覽的「下載整合測試資料包 ZIP」（`GET /api/bench-bundle`）納入當下準備快照、最近一份可讀取且已保存的 ESP32 模型報告，以及通過本機 HEX 重新核對的 STM8 編譯報告，另納入目前登記 BMS 的最新有效歷史快照 `bms-snapshot.json` 與 `bms-cells.csv`。BMS 快照需通過完整性檢查，只選相同位址；沒有有效資料時記錄缺項。匯出不重新連線讀取 BMS，`context.json` 保留快照識別與採樣時間。未重新執行測試；服務重啟後仍從歷史報告取得結果。最新有效報告可以是失敗或中止，原結果不變。缺少或無效資料會列於 `context.json`，沒有資料時也能匯出準備狀態。
 
 所有 ZIP 成員名稱固定，附 `SHA256SUMS.txt`，可獨立驗證內容完整性。各資料分別取得，時間與測試範圍不同，`hil_verified` 固定 false。匯出不開啟硬體、不包含手機畫面、韌體 binary、編譯器或聊天附件。資料包只由本機下載端點回傳，不對外上傳。
+
+
+### BMS 歷史快照比較
+在電池快照紀錄選擇基準與對象，可比較總壓、電流、SOC、溫度及每串電壓並下載 JSON。只接受同一保護板、相同協定與版本及有效電芯編號；差值＝對象減基準，保留兩次時間。不同負載與時間的變化不當作健康或 HIL 判定；不讀取硬體。API：`GET /api/bms/compare?baseline=<id>&target=<id>`。
