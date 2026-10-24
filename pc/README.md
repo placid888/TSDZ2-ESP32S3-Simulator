@@ -235,3 +235,14 @@ PNG 上限 16 MiB、8192×8192 且不超過 4000 萬畫素，檢查簽章、區�
 `GET /api/android/captures` 列出已保存紀錄；`GET /api/android/captures/<32位id>.png` 讀取校驗後圖片，`.json` 讀取紀錄。固定 ID 與路徑檢查拒絕任意檔案讀取。控制台可查看、下載 PNG/JSON。自動測試執行中不接受新的手動截圖；ADB 等待不持有 ESP32 串口鎖。
 
 本階段尚未接上測試手機，截圖成功路徑以測試替身驗證；實機畫面擷取仍待手機接入與授權後確認。生產紀錄不包含測試替身圖片。
+## STM8 工作台準備檢查
+
+`GET /api/stm8/state` 讀取快照與工具位置；`GET /api/stm8/scan` 使用 Windows 固定的 Get-CimInstance Win32_PnPEntity 查詢，只列 USB 中名稱符合 ST-Link/STM8/SWIM 或 VID_0483 的候選項，排除明確不在場的裝置。最多等待 8 秒，不開啟 USB probe、不讀寫晶片，不持有模擬器串口鎖。
+
+ST-Link 名稱與驅動狀態僅供辨識，swim_verified 永遠為 false，programming_enabled 永遠為 false。ST 廠商 USB 裝置不一律視為 ST-Link。查詢失敗/逾時明確回報錯誤，不混同成功的零裝置結果。
+
+查找 PATH 與常見 Program Files 位置的 SDCC、STVP_CmdLine、stm8flash，不執行工具，不推定版本或專案相容性。ST-LINK_CLI / STM32 工具不作為已具備 STM8 燒錄能力的證據。實際所需編譯器與版本仍以韌體專案為準。
+
+`POST /api/stm8/source` 使用 `{"repository_url":"https://github.com/owner/repo"}` 登記至 `pc/local/stm8_project.json`。只接受不含帳密、query、fragment 的 GitHub 根 repo URL；不 clone、不編譯、不下載或燒錄，自動測試期間不允許改來源。source_verified=false；設定損壞不覆寫。尚未選定專案時維持空白，不填測試專案。
+
+官方參考：STVP https://www.st.com/en/development-tools/stvp-stm8.html 、SDCC https://sdcc.sourceforge.net/ 。

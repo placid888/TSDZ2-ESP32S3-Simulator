@@ -21,6 +21,8 @@ function enabled(){
   for(const id of ['rideSave','rideLoad','rideAdd'])$(id).disabled=busy||active;
   for(const input of document.querySelectorAll('#rideFields input,#rideSteps input,#rideSteps button'))input.disabled=busy||active;
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
+  $('stm8Save').disabled=busy||active;
+  $('stm8Source').disabled=busy||active;
   $('androidCapture').disabled=busy||active||androidScanning||androidCapturing||!androidSelectedReady;
   $('androidScan').disabled=androidScanning||androidCapturing||!androidInitialized;
   $('androidSave').disabled=busy||active||androidScanning||androidCapturing||!androidReady;$('androidTarget').disabled=busy||active||androidScanning||androidCapturing;
@@ -322,7 +324,7 @@ async function scanDevices(){
       card.append(title,text,hint);$('deviceRoles').append(card);
     }
     for(const r of d.pending){const card=document.createElement('div');card.className='device-card';const title=document.createElement('b');title.textContent=r.label;const text=document.createElement('p');text.textContent=r.status;card.append(title,text);$('deviceRoles').append(card);}
-    $('deviceMessage').textContent=d.error||`找到 ${d.ports.length} 個串口 · ADB ${d.tools.adb?'已安裝':'未在環境找到'} · STM8 燒錄工具 ${d.tools.stm8flash||d.tools.st_link_cli?'已找到':'尚未找到'}。登記角色不代表硬體身分已驗證。`;
+    $('deviceMessage').textContent=d.error||`找到 ${d.ports.length} 個串口 · ADB ${d.tools.adb?'已安裝':'未在環境找到'} · STM8 燒錄工具 ${d.tools.stm8flash||d.tools.stvp?'已找到':'尚未找到'}。登記角色不代表硬體身分已驗證。`;
   }catch(e){$('deviceMessage').textContent=e.message;}
   finally{deviceScanning=false;$('deviceScan').disabled=false;}
 }

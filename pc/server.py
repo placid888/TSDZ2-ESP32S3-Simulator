@@ -21,6 +21,7 @@ from devices import DeviceRegistry
 from android_device import AndroidMonitor
 from android_capture import CaptureStore, capture_selected
 from ride_plan import read_plan, save_plan
+from stm8_workbench import Stm8Workbench
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -209,6 +210,7 @@ LINK = BenchLink()
 RUNNER = ScenarioRunner(LINK)
 REPORTS = ReportStore(RUNNER.reports)
 STATIC = Path(__file__).with_name("web")
+STM8 = Stm8Workbench(Path(__file__).with_name("local")/"stm8_project.json")
 CAPTURES = CaptureStore(Path(__file__).with_name("local")/"android_captures")
 ANDROID = AndroidMonitor(Path(__file__).with_name("local")/"android_target.json")
 RIDE_PLAN = Path(__file__).with_name("local")/"ride_plan.json"
@@ -242,6 +244,10 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path == '/api/stm8/state':
+            return self.respond(STM8.snapshot())
+        if path == '/api/stm8/scan':
+            return self.respond(STM8.scan())
         if path == '/api/android/captures':
             return self.respond(CAPTURES.listing())
         if path.startswith('/api/android/captures/'):
@@ -314,10 +320,10 @@ class Handler(BaseHTTPRequestHandler):
             writer.writeheader()
             writer.writerows(rows)
             return self.respond(content.getvalue(), kind="text/csv; charset=utf-8")
-        files = {"/": "index.html", "/app.js": "app.js", "/ride.js": "ride.js", "/android.js": "android.js", "/style.css": "style.css"}
+        files = {"/": "index.html", "/app.js": "app.js", "/ride.js": "ride.js", "/android.js": "android.js", "/stm8.js": "stm8.js", "/style.css": "style.css"}
         if path not in files:
             return self.respond({"error": "Not found"}, 404)
-        kind = {"/": "text/html", "/app.js": "text/javascript", "/ride.js": "text/javascript", "/android.js": "text/javascript", "/style.css": "text/css"}[path]
+        kind = {"/": "text/html", "/app.js": "text/javascript", "/ride.js": "text/javascript", "/android.js": "text/javascript", "/stm8.js": "text/javascript", "/style.css": "text/css"}[path]
         return self.respond((STATIC / files[path]).read_bytes(), kind=kind + "; charset=utf-8")
 
     def do_POST(self):
@@ -332,6 +338,10 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("JSON request must be an object")
             path = urlparse(self.path).path
+            if path == '/api/stm8/source':
+                with LINK.lock:
+                    if RUNNER.active:raise ValueError('請先結束正在執行的測試')
+                return self.respond({'ok':True,'stm8':STM8.save_source(data.get('repository_url'))})
             if path == '/api/android/capture':
                 with LINK.lock:
                     if RUNNER.active:raise ValueError('請先結束正在執行的自動測試')
