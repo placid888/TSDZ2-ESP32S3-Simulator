@@ -14,3 +14,5 @@
 .endurance p,.endurance label{font-size:12px;line-height:1.8}.endurance input{width:80px;padding:9px;margin-left:12px;background:#101a1b;border:1px solid var(--line);border-radius:5px;color:var(--text)}
 
 .provenance p{font-size:12px;line-height:1.8;overflow-wrap:anywhere}
+
+.report-compare select{display:block;width:100%;padding:10px;margin:12px 0}.report-compare p,.report-compare label{font-size:12px;line-height:1.8;overflow-wrap:anywhere}.report-compare a{display:inline-block;margin:10px 0}

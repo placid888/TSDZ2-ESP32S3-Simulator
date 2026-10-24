@@ -223,6 +223,11 @@ async function loadHistory(){
   $('historyRefresh').disabled=true;
   try{
     const data=await api('reports');
+    const baseline=$('compareBaseline').value;
+    $('compareBaseline').replaceChildren(new Option('請選擇基準',''));
+    for(const r of data.reports){if(r.status==='passed'&&r.stop_confirmed)$('compareBaseline').append(new Option(`${new Date(r.started_at*1000).toLocaleString('zh-TW',{hour12:false})} · ${r.name}`,r.id));}
+    if(data.reports.some(r=>r.id===baseline))$('compareBaseline').value=baseline;
+    invalidateComparison();
     $('historySelect').replaceChildren(new Option('請選擇報告',''));
     for(const r of data.reports){
       const date=new Date(r.started_at*1000).toLocaleString('zh-TW',{hour12:false});
@@ -236,6 +241,7 @@ async function loadHistory(){
 }
 $('historyRefresh').onclick=loadHistory;
 $('historySelect').onchange=async()=>{
+  invalidateComparison();
   const id=$('historySelect').value,request=++historyRequest;
   $('historyDetail').hidden=true;if(!id)return;
   try{
@@ -253,3 +259,32 @@ $('historySelect').onchange=async()=>{
   }catch(e){if(request===historyRequest)$('historyMessage').textContent=e.message;}
 };
 loadHistory();
+
+let compareRequest=0;
+function invalidateComparison(){
+  compareRequest++;
+  $('compareResult').hidden=true;
+  $('compareMessage').textContent='差值＝歷史報告選取的對象 − 基準。差異不代表新的 PASS/FAIL。';
+}
+$('compareBaseline').onchange=invalidateComparison;
+$('compareStart').onclick=async()=>{
+  const baseline=$('compareBaseline').value,candidate=$('historySelect').value;
+  if(!baseline||!candidate){$('compareMessage').textContent='請先選擇歷史報告與基準報告';return;}
+  const request=++compareRequest;
+  $('compareStart').disabled=true;$('compareResult').hidden=true;
+  try{
+    const path='compare?baseline='+encodeURIComponent(baseline)+'&candidate='+encodeURIComponent(candidate);
+    const r=await api(path);if(request!==compareRequest)return;
+    $('compareMessage').textContent=r.note;
+    $('compareVersions').textContent='基準：'+provenanceText(r.baseline.provenance)+'；比較對象：'+provenanceText(r.candidate.provenance);
+    $('compareDownload').href='/api/'+path;
+    $('compareRows').replaceChildren();
+    for(const row of r.rows)for(const [key,label,unit,n] of [['rpm','轉速','RPM',1],['current_a','電流','A',3],['battery_v','電壓','V',3]]){
+      const tr=document.createElement('tr'),m=row.metrics[key];
+      for(const value of [row.name,label, m.baseline.toFixed(n)+' '+unit,m.candidate.toFixed(n)+' '+unit,(m.delta>0?'+':'')+m.delta.toFixed(n)+' '+unit]){const td=document.createElement('td');td.textContent=value;tr.append(td);}
+      $('compareRows').append(tr);
+    }
+    $('compareResult').hidden=false;
+  }catch(e){if(request===compareRequest)$('compareMessage').textContent=e.message;}
+  finally{$('compareStart').disabled=false;}
+};

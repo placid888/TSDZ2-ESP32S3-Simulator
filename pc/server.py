@@ -9,12 +9,13 @@ import time
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 import serial
 from serial.tools import list_ports
 from scenarios import ScenarioRunner
 from report_store import ReportStore
+from report_compare import compare_reports
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -231,6 +232,19 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path == '/api/compare':
+            try:
+                query=parse_qs(urlparse(self.path).query)
+                if set(query)!= {'baseline','candidate'} or any(len(v)!=1 for v in query.values()):
+                    raise ValueError('請選擇基準與比較報告')
+                a,b=query['baseline'][0],query['candidate'][0]
+                if a==b:raise ValueError('請選擇兩份不同報告')
+                result=compare_reports(REPORTS.read(a),REPORTS.read(b))
+                return self.respond({**result,'baseline_id':a,'candidate_id':b})
+            except OSError:
+                return self.respond({'error':'找不到報告'},404)
+            except (ValueError,TypeError,KeyError,AttributeError) as exc:
+                return self.respond({'error':str(exc)},400)
         if path == '/api/reports':
             return self.respond(REPORTS.listing())
         if path.startswith('/api/reports/'):
