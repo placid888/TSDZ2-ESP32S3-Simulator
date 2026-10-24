@@ -30,6 +30,8 @@ python pc/stm8_build.py --source pc/local/stm8-source --sdcc "$env:USERPROFILE/.
 
 ## 產物與實測
 
+要在控制台顯示結果，將成功產物的 `build-report.json` 與 `firmware.hex` 複製到 `pc/local/stm8-build/`，再按「讀取編譯結果」。此目錄不進 Git；網頁只做檢視，不會啟動編譯。複製不完整或檔案與報告不符時會顯示無法驗證。
+
 - `firmware.hex`：`main.ihx` 的原樣複本，未變更位址或插入 bootloader。
 - `build.log`：完整命令及輸出。
 - `build-report.json`：commit、來源檔雜湊、編譯器版本/雜湊、旗標、警告、HEX 校驗及資料範圍。

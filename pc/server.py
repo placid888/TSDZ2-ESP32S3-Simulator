@@ -22,6 +22,7 @@ from android_device import AndroidMonitor
 from android_capture import CaptureStore, capture_selected
 from ride_plan import read_plan, save_plan
 from stm8_workbench import Stm8Workbench
+from stm8_artifacts import Stm8Artifacts
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -211,6 +212,7 @@ RUNNER = ScenarioRunner(LINK)
 REPORTS = ReportStore(RUNNER.reports)
 STATIC = Path(__file__).with_name("web")
 STM8 = Stm8Workbench(Path(__file__).with_name("local")/"stm8_project.json")
+STM8_BUILD = Stm8Artifacts(Path(__file__).with_name('local')/'stm8-build')
 CAPTURES = CaptureStore(Path(__file__).with_name("local")/"android_captures")
 ANDROID = AndroidMonitor(Path(__file__).with_name("local")/"android_target.json")
 RIDE_PLAN = Path(__file__).with_name("local")/"ride_plan.json"
@@ -246,6 +248,13 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == '/api/stm8/state':
             return self.respond(STM8.snapshot())
+        if path == '/api/stm8/build':
+            return self.respond(STM8_BUILD.snapshot(STM8.snapshot()['repository_url']))
+        if path == '/api/stm8/build/report':
+            try:
+                return self.respond(STM8_BUILD.report(), filename='stm8-offline-build.json')
+            except (OSError, ValueError, TypeError, AttributeError, KeyError):
+                return self.respond({'error': '尚無可驗證的 STM8 離線編譯報告'}, 404)
         if path == '/api/stm8/scan':
             return self.respond(STM8.scan())
         if path == '/api/android/captures':

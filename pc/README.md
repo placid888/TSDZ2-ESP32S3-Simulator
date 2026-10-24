@@ -246,3 +246,8 @@ ST-Link 名稱與驅動狀態僅供辨識，swim_verified 永遠為 false，prog
 `POST /api/stm8/source` 使用 `{"repository_url":"https://github.com/owner/repo"}` 登記至 `pc/local/stm8_project.json`。只接受不含帳密、query、fragment 的 GitHub 根 repo URL；不 clone、不編譯、不下載或燒錄，自動測試期間不允許改來源。source_verified=false；設定損壞不覆寫。尚未選定專案時維持空白，不填測試專案。
 
 官方參考：STVP https://www.st.com/en/development-tools/stvp-stm8.html 、SDCC https://sdcc.sourceforge.net/ 。
+## STM8 離線結果檢視
+
+STM8 工作台可讀取 `pc/local/stm8-build/build-report.json` 及 `firmware.hex`，重新核對 HEX 記錄和報告中的 SHA-256、資料範圍。缺檔、報告不符或校驗失敗時不顯示通過；目前登記來源不同時會顯示來源不符。只讀取固定本機路徑，不接受網頁指定的檔案路徑，也不啟動編譯器或燒錄工具。
+
+`GET /api/stm8/build` 回傳檢視狀態；`GET /api/stm8/build/report` 下載已通過檔案核對的原始編譯報告，無有效產物時為 404。沒有上傳、執行或燒錄端點。來源與編譯操作見 [離線編譯說明](../docs/stm8-offline-build.md)。
