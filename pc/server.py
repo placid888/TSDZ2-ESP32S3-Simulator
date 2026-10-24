@@ -25,6 +25,7 @@ from stm8_workbench import Stm8Workbench
 from stm8_artifacts import Stm8Artifacts
 from android_app import launch_selected
 from readiness import preparation
+from bench_bundle import bench_bundle
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -248,12 +249,23 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
-        if path in ('/api/readiness', '/api/readiness/report'):
+        if path in ('/api/readiness', '/api/readiness/report', '/api/bench-bundle'):
             motor = LINK.snapshot()
             stm8 = STM8.snapshot()
             result = preparation(motor, ANDROID.snapshot(), stm8,
                 STM8_BUILD.snapshot(stm8['repository_url']),
                 DEVICES.snapshot(list_ports.comports(), motor['port']), RUNNER.snapshot()['active'])
+            if path == '/api/bench-bundle':
+                issues=[]; model=None; build=None; model_id=None
+                listing=REPORTS.listing()
+                if listing['skipped']:issues.append(f"略過 {listing['skipped']} 份無效 ESP32 報告")
+                if listing['reports']:
+                    model_id=listing['reports'][0]['id']
+                    try:model=REPORTS.read(model_id)
+                    except (OSError, ValueError, TypeError):issues.append('ESP32 報告讀取失敗')
+                try:build=STM8_BUILD.report()
+                except (OSError, ValueError, TypeError, AttributeError, KeyError):issues.append('STM8 離線產物缺少或無法校驗')
+                return self.respond(bench_bundle(result,model,build,issues,model_id),kind='application/zip',filename='tsdz-bench-evidence.zip')
             return self.respond(result, filename='bench-preparation.json' if path.endswith('/report') else None)
         if path == '/api/stm8/state':
             return self.respond(STM8.snapshot())
