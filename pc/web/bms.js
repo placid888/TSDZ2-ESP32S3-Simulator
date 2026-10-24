@@ -26,7 +26,9 @@ function renderBms(data){
     const balance=t.balance_state_raw===0?'關閉':[1,2].includes(t.balance_state_raw)?'進行中':`未知（${t.balance_state_raw??'未取得'}）`;
     $('bmsBalance').textContent=`均衡 ${balance} · 均衡電流 ${number(t.balance_current_a,3)} A`;
     $('bmsCycles').textContent=`循環次數 ${Number.isFinite(t.cycle_count)?t.cycle_count:'—'} · 累計循環容量 ${number(t.cycle_capacity_ah,3)} Ah`;
-    $('bmsSnapshotAlarm').textContent=`告警原始碼：0x${t.alarm_raw.toString(16).toUpperCase().padStart(4,'0')}（名稱解碼待核對）；資料封包校驗通過。`;
+    const alarm=t.alarm;
+    $('bmsSnapshotAlarm').textContent=alarm?`${alarm.raw_hex} · ${alarm.entries.length?alarm.entries.map(x=>x.message).join('；'):'此採樣未回報告警'}`:`告警原始碼：0x${t.alarm_raw.toString(16).toUpperCase().padStart(4,'0')}（舊快照未含中文解碼）`;
+    $('bmsSnapshotAlarm').classList.toggle('bms-alarm-active',!!alarm?.has_alarm);
     $('bmsCells').replaceChildren();
     for(const cell of t.cells){
       const row=document.createElement('tr');

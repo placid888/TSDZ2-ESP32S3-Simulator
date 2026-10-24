@@ -65,6 +65,12 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(t['cell_min_v'],3.5);self.assertEqual(len(t['cells']),13)
         self.assertEqual(t['cells'][-1]['cell'],13)
 
+    def test_alarm_word_is_decoded_from_little_endian_status_bytes(self):
+        b=bytearray(status());struct.pack_into('<H',b,136,(1<<5)|(1<<11))
+        t=status_24s(seal(b),INFO)
+        self.assertEqual(t['alarm_raw'],2080)
+        self.assertEqual([x['bit'] for x in t['alarm']['entries']],[5,11])
+
     def test_device_version_is_from_jk_frame_not_ble_module(self):
         b=bytearray(300);b[:4]=HEADER;b[4]=3
         for off,key in [(6,'model'),(22,'hardware'),(30,'software')]:

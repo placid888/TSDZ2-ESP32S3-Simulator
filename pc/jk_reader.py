@@ -6,6 +6,7 @@ No settings, MOSFET, balance, pairing, or OTA command is implemented.
 import asyncio
 import struct
 import time
+from jk_alarms import decode_alarms
 
 CHARACTERISTIC = '0000ffe1-0000-1000-8000-00805f9b34fb'
 HEADER = b'\x55\xaa\xeb\x90'
@@ -72,7 +73,8 @@ def status_24s(raw, info):
             'balance_current_a':s16(138)/1000,'balance_state_raw':raw[140],
             'cycle_count':u32(150),'cycle_capacity_ah':u32(154)/1000,
             'temperature_1_c':temps[0],'temperature_2_c':temps[1],'mos_temperature_c':temps[2],
-            'alarm_raw':u16(136),'checksum_valid':True,'mode':'single_snapshot_then_disconnect'}
+            'alarm_raw':u16(136),'alarm':decode_alarms(u16(136)),
+            'checksum_valid':True,'mode':'single_snapshot_then_disconnect'}
 
 
 async def read_snapshot(address):

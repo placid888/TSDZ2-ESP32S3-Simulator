@@ -38,7 +38,7 @@ class BmsStore:
         id=uuid.uuid4().hex
         data={'schema':1,'id':id,'address':state['selected_address'],'telemetry':state['telemetry'],'pc_identity':pc_identity,
               'field_notes':{'remaining_ah':'尚未與 App 當下容量交叉核對','nominal_ah':'尚未與 App 當下容量交叉核對',
-                             'alarm_raw':'原始告警位元，名稱解碼待核對'},
+                             'alarm_raw':'保留原始位元；中文對照見 telemetry.alarm，未知位元不忽略'},
               'scope':'Historical single BMS snapshot; not a live connection or combined HIL result'}
         self.validate(data)
         record={**data,'sha256':hashlib.sha256(json_bytes(data)).hexdigest()}
