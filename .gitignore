@@ -12,3 +12,6 @@ __pycache__/
 pc/.venv/
 pc/*.log
 pc/reports/
+
+# Private chat uploads are not project source
+.codex-remote-attachments/

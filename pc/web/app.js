@@ -281,7 +281,8 @@ $('compareStart').onclick=async()=>{
     $('compareRows').replaceChildren();
     for(const row of r.rows)for(const [key,label,unit,n] of [['rpm','轉速','RPM',1],['current_a','電流','A',3],['battery_v','電壓','V',3]]){
       const tr=document.createElement('tr'),m=row.metrics[key];
-      for(const value of [row.name,label, m.baseline.toFixed(n)+' '+unit,m.candidate.toFixed(n)+' '+unit,(m.delta>0?'+':'')+m.delta.toFixed(n)+' '+unit]){const td=document.createElement('td');td.textContent=value;tr.append(td);}
+      const values=[row.name,label,m.baseline.toFixed(n)+' '+unit,m.candidate.toFixed(n)+' '+unit,(m.delta>0?'+':'')+m.delta.toFixed(n)+' '+unit];
+      values.forEach((value,index)=>{const td=document.createElement('td');td.textContent=value;td.dataset.label=['步驟','數值','基準','比較對象','差值'][index];tr.append(td);});
       $('compareRows').append(tr);
     }
     $('compareResult').hidden=false;

@@ -16,3 +16,16 @@
 .provenance p{font-size:12px;line-height:1.8;overflow-wrap:anywhere}
 
 .report-compare select{display:block;width:100%;padding:10px;margin:12px 0}.report-compare p,.report-compare label{font-size:12px;line-height:1.8;overflow-wrap:anywhere}.report-compare a{display:inline-block;margin:10px 0}
+
+/* Keep all three readings visible in narrow previews and on phones. */
+@media(max-width:640px){
+  .report-compare .sweep-table{max-height:440px;overflow-x:hidden}
+  .report-compare table,.report-compare tbody{display:block;width:100%;white-space:normal}
+  .report-compare thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .report-compare tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:10px 0;padding:12px 9px;background:#101a1b;border:1px solid var(--line);border-radius:8px;text-align:left}
+  .report-compare td{display:block;padding:0;border:0;white-space:normal;overflow-wrap:anywhere;font-size:11px;text-align:left}
+  .report-compare td:nth-child(1){grid-column:1/-1;color:var(--text);font-size:12px}
+  .report-compare td:nth-child(2){grid-column:1/-1;color:var(--muted);margin-bottom:4px}
+  .report-compare td:nth-child(n+3)::before{content:attr(data-label);display:block;color:var(--muted);font-size:10px;margin-bottom:5px}
+  .report-compare td:last-child{color:var(--green)}
+}
