@@ -26,6 +26,7 @@ from stm8_artifacts import Stm8Artifacts
 from android_app import launch_selected
 from readiness import preparation
 from bench_bundle import bench_bundle
+from jk_bms import JkMonitor
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -215,6 +216,7 @@ RUNNER = ScenarioRunner(LINK)
 REPORTS = ReportStore(RUNNER.reports)
 STATIC = Path(__file__).with_name("web")
 STM8 = Stm8Workbench(Path(__file__).with_name("local")/"stm8_project.json")
+JK_BMS = JkMonitor(Path(__file__).with_name('local')/'jk_bms.json')
 STM8_BUILD = Stm8Artifacts(Path(__file__).with_name('local')/'stm8-build')
 CAPTURES = CaptureStore(Path(__file__).with_name("local")/"android_captures")
 ANDROID = AndroidMonitor(Path(__file__).with_name("local")/"android_target.json")
@@ -249,6 +251,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path == '/api/bms/state':
+            return self.respond(JK_BMS.snapshot())
         if path in ('/api/readiness', '/api/readiness/report', '/api/bench-bundle'):
             motor = LINK.snapshot()
             stm8 = STM8.snapshot()
@@ -350,10 +354,10 @@ class Handler(BaseHTTPRequestHandler):
             writer.writeheader()
             writer.writerows(rows)
             return self.respond(content.getvalue(), kind="text/csv; charset=utf-8")
-        files = {"/": "index.html", "/app.js": "app.js", "/ride.js": "ride.js", "/android.js": "android.js", "/stm8.js": "stm8.js", "/style.css": "style.css"}
+        files = {"/": "index.html", "/app.js": "app.js", "/ride.js": "ride.js", "/android.js": "android.js", "/stm8.js": "stm8.js", "/bms.js": "bms.js", "/style.css": "style.css"}
         if path not in files:
             return self.respond({"error": "Not found"}, 404)
-        kind = {"/": "text/html", "/app.js": "text/javascript", "/ride.js": "text/javascript", "/android.js": "text/javascript", "/stm8.js": "text/javascript", "/style.css": "text/css"}[path]
+        kind = {"/": "text/html", "/app.js": "text/javascript", "/ride.js": "text/javascript", "/android.js": "text/javascript", "/stm8.js": "text/javascript", "/bms.js": "text/javascript", "/style.css": "text/css"}[path]
         return self.respond((STATIC / files[path]).read_bytes(), kind=kind + "; charset=utf-8")
 
     def do_POST(self):
@@ -368,6 +372,10 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("JSON request must be an object")
             path = urlparse(self.path).path
+            if path in ('/api/bms/scan','/api/bms/select'):
+                with LINK.lock:
+                    if RUNNER.active:raise ValueError('請先結束自動測試，再操作 BMS 掃描與登記')
+                return self.respond({'ok':True,'bms':JK_BMS.scan() if path.endswith('/scan') else JK_BMS.select(data.get('address'))})
             if path == '/api/stm8/source':
                 with LINK.lock:
                     if RUNNER.active:raise ValueError('請先結束正在執行的測試')
