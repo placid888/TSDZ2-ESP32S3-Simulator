@@ -22,6 +22,14 @@
 
 ## 後續接入
 
+### STM8 來源核對（2026-10-24）
+
+使用者指定的[控制器燒錄指南](https://github.com/TSDZ2-ESP32/TSDZ2-ESP32-Wiki/wiki/TSDZ-Controller-Flash)對應 STM8 控制器。指南連到 Wiki repository 的 `bin/STM8` 成品目錄；查詢時包含 `TSDZ2-v16.zip`，尚未下載或驗證其內容及相容性。
+
+同組織的[控制器原始碼](https://github.com/TSDZ2-ESP32/TSDZ2-Smart-EBike) README 明確說明為 TSDZ2 馬達控制器韌體，已登記到本機工作台。`src/compile.bat` 使用 SDCC 和 make，`src/Makefile_windows` 指定 STM8，產生 `main.ihx`；`release.bat` 將其複製為版本化 `.hex`。尚未確認可重現編譯所需的 SDCC 版本，也未證實原始碼與任何成品版本逐位元相符。
+
+指南另有為 Android OTA 啟用 bootloader 的 Option Byte 寫入步驟；這是獨立的控制器設定變更，未自動執行。待確認板型、備份與 SWIM 接線後再規劃。原作者 ESP32 板及 ESP32-S3 模擬器仍維持不同角色。
+
 1. Android：確認官方 ADB 工具與實體測試手機，先偵測、啟動指定 App、截圖及收集紀錄。App 套件名與測試流程待確認。
 2. STM8：確認實際控制板、ST-Link、韌體來源、編譯與燒錄工具，再提供受限的目標操作。SWIM 接線不推測。
 3. Gateway / 原作者 ESP32 板：確認板型、來源專案與串口用途；若不是同一塊板，維持兩個角色。
