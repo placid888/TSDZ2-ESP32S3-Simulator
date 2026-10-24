@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from sweep import plan_sweep, trend_checks
+from ride_plan import validate_plan
 
 
 class Cancelled(Exception):
@@ -29,12 +30,13 @@ class ScenarioRunner:
                 report['sample_count'] = len(report.pop('samples'))
             return {'active': self.active, 'report': report}
 
-    def start(self, kind='sequence', sweep=None, cycles=5):
-        if kind not in ('sequence','sweep','faults','endurance'):
+    def start(self, kind='sequence', sweep=None, cycles=5, ride=None):
+        if kind not in ('sequence','sweep','faults','endurance','ride'):
             raise ValueError('不支援的測試類型')
         if kind=='endurance' and (type(cycles) is not int or not 1 <= cycles <= 20):
             raise ValueError('循環次數須為 1–20 的整數')
         plan, points = plan_sweep(sweep) if kind == 'sweep' else (None, [])
+        if kind=='ride':plan=validate_plan(ride)
         with self.link.lock:
             if self.active:
                 raise ValueError('自動測試已在執行')
@@ -48,7 +50,7 @@ class ScenarioRunner:
             self.cancel_event.clear()
             self.report = {'schema': 1, 'name': '起步 → 爬坡 → 煞車 → 停止',
                            'kind':kind, 'plan':plan, 'points':[], 'comparisons':[], 'total_points':len(points),
-                           'total_checks':4*cycles if kind=='endurance' else 8 if kind=='faults' else 4,
+                           'total_checks':len(plan['steps'])+1 if kind=='ride' else 4*cycles if kind=='endurance' else 8 if kind=='faults' else 4,
                            'status': 'running', 'started_at': time.time(), 'finished_at': None,
                            'port': self.link.port_name, 'protocol': t['protocol'],
                            'provenance':{'firmware':copy.deepcopy(getattr(self.link,'device_info',None)),
@@ -64,6 +66,8 @@ class ScenarioRunner:
                 self.report['name'] = '模型故障注入 / 恢復 / 停止'
             if kind=='endurance':
                 self.report.update(name=f'連續循環測試 · {cycles} 次', total_cycles=cycles, completed_cycles=0, current_cycle=0)
+            if kind=='ride':
+                self.report.update(name='自訂騎乘流程',parameters={'BATTERY':plan['battery_v'],'CADENCE':plan['cadence_rpm'],'TORQUE':plan['torque_nm']})
             self.link.event('開始自動測試：'+self.report['name'])
             self.worker = threading.Thread(target=self._run, daemon=True)
             self.worker.start()
@@ -226,6 +230,31 @@ class ScenarioRunner:
                      stop['fault']=='NONE' and not stop['running'] and stop['rpm']==0
                      and stop['current_a']==0 and stop['pwm_percent']==0 and stop['dac_codes']==[0]*8,stop)
 
+    def _ride(self):
+        plan=self.report['plan'];base=self.report['parameters']
+        self._stage('流程準備',[('STOP',None),('SET',{**base,'PWM':0,'GRADE':0,'BRAKE':0})])
+        for index,row in enumerate(plan['steps']):
+            settings={**base,'PWM':row['pwm_percent'],'GRADE':row['grade_percent'],'BRAKE':int(row['brake'])}
+            name=f"步驟 {index+1} · {row['name']}"
+            commands=[('SET',settings)]+([('RUN',None)] if index==0 else [])
+            self._stage(name,commands)
+            observed=self._measure(row['seconds'])
+            with self.link.lock:
+                self._check();t=self.link.telemetry
+                valid=(t['running'] and abs(t['pwm_percent']-row['pwm_percent'])<.01
+                       and abs(t['grade_percent']-row['grade_percent'])<.01 and bool(t['brake'])==row['brake']
+                       and abs(t['battery_open_circuit_v']-plan['battery_v'])<.01
+                       and abs(t['cadence_rpm']-plan['cadence_rpm'])<.01 and abs(t['torque_nm']-plan['torque_nm'])<.01
+                       and t.get('fault','NONE')=='NONE' and not t.get('link_timeout',False)
+                       and observed['rpm']>=0 and observed['current_a']>=0 and 0<=observed['battery_v']<=plan['battery_v']+.01
+                       and (not row['brake'] or observed['current_a']<=.01))
+            self._result(name,'設定回報相符、資料有效；煞車時電流歸零（不判斷實車性能）',valid,observed)
+        self._stage('流程停止',[('STOP',None)])
+        with self.link.lock:t=copy.deepcopy(self.link.telemetry)
+        self._result('停止與清理','停止、PWM/轉速/電流/DAC歸零、故障清除',
+                     not t['running'] and t['pwm_percent']==0 and t['rpm']==0 and t['current_a']==0
+                     and t['dac_codes']==[0]*8 and t.get('fault','NONE')=='NONE',t)
+
     def _endurance(self):
         for cycle in range(1,self.report['total_cycles']+1):
             with self.link.lock:
@@ -241,6 +270,7 @@ class ScenarioRunner:
             if self.report['kind']=='sweep': self._sweep()
             elif self.report['kind']=='faults': self._faults()
             elif self.report['kind']=='endurance': self._endurance()
+            elif self.report['kind']=='ride': self._ride()
             else: self._sequence()
         except Cancelled as exc:
             status, error = 'cancelled', str(exc)

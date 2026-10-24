@@ -11,7 +11,7 @@ def compare_reports(baseline,candidate):
     for key in ('kind','parameters','plan','total_cycles','scope'):
         if baseline.get(key)!=candidate.get(key):
             raise ValueError('測試條件不同，無法比較：'+key)
-    if baseline.get('kind') not in ('sequence','faults','endurance','sweep'):
+    if baseline.get('kind') not in ('sequence','faults','endurance','sweep','ride'):
         raise ValueError('不支援的測試類型')
     a,b=baseline.get('steps',[]),candidate.get('steps',[])
     if not a or len(a)!=len(b):raise ValueError('驗證步驟數不同或沒有結果')

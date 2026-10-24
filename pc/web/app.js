@@ -17,6 +17,9 @@ async function api(path,data){
 }
 function enabled(){
   const active=!!state?.test?.active, ok=!!state?.connected&&!state.stale&&!busy&&!active;
+  $('rideStart').disabled=!ok;$('rideCancel').disabled=!active||busy;
+  for(const id of ['rideSave','rideLoad','rideAdd'])$(id).disabled=busy||active;
+  for(const input of document.querySelectorAll('#rideFields input,#rideSteps input,#rideSteps button'))input.disabled=busy||active;
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
   $('registeredMotor').disabled=busy||active||!!state?.connected||!motorAvailable;
   $('deviceSave').disabled=busy||active;$('deviceClear').disabled=busy||active;
@@ -132,6 +135,7 @@ function renderSweep(test){
 }
 function renderTest(test){
   const r=test?.report;
+  $('rideProgress').textContent=r?.kind==='ride'?`${test.active?r.step:r.status.toUpperCase()} · ${r.steps.length}/${r.total_checks} 項檢查${test.active?'':' · 停止'+(r.stop_confirmed?'已確認':'未確認')}`:'尚未執行；保存不會操作裝置。';
   $('enduranceProgress').textContent=r?.kind==='endurance'?`${test.active?r.step:r.status.toUpperCase()} · 已完成 ${r.completed_cycles}/${r.total_cycles} 次 · ${r.steps.length}/${r.total_checks} 項檢查${test.active?'':' · 停止'+(r.stop_confirmed?'已確認':'未確認')}`:'尚未執行；結果會保存至歷史報告。';
   $('testDownload').hidden=!r||test.active;
   if(!r)return;

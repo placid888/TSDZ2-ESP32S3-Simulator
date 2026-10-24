@@ -18,6 +18,7 @@ from report_store import ReportStore
 from report_compare import compare_reports
 from report_bundle import make_bundle
 from devices import DeviceRegistry
+from ride_plan import read_plan, save_plan
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -206,6 +207,7 @@ LINK = BenchLink()
 RUNNER = ScenarioRunner(LINK)
 REPORTS = ReportStore(RUNNER.reports)
 STATIC = Path(__file__).with_name("web")
+RIDE_PLAN = Path(__file__).with_name("local")/"ride_plan.json"
 DEVICES = DeviceRegistry(Path(__file__).with_name("local")/"devices.json")
 
 
@@ -236,6 +238,9 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path == '/api/ride-plan':
+            try:return self.respond(read_plan(RIDE_PLAN))
+            except (OSError,ValueError,TypeError):return self.respond({'error':'保存的流程無法讀取，原檔未修改'},400)
         if path == '/api/devices':
             return self.respond(DEVICES.snapshot(list_ports.comports(),LINK.port_name))
         if path.startswith('/api/bundle/'):
@@ -292,10 +297,10 @@ class Handler(BaseHTTPRequestHandler):
             writer.writeheader()
             writer.writerows(rows)
             return self.respond(content.getvalue(), kind="text/csv; charset=utf-8")
-        files = {"/": "index.html", "/app.js": "app.js", "/style.css": "style.css"}
+        files = {"/": "index.html", "/app.js": "app.js", "/ride.js": "ride.js", "/style.css": "style.css"}
         if path not in files:
             return self.respond({"error": "Not found"}, 404)
-        kind = {"/": "text/html", "/app.js": "text/javascript", "/style.css": "text/css"}[path]
+        kind = {"/": "text/html", "/app.js": "text/javascript", "/ride.js": "text/javascript", "/style.css": "text/css"}[path]
         return self.respond((STATIC / files[path]).read_bytes(), kind=kind + "; charset=utf-8")
 
     def do_POST(self):
@@ -304,7 +309,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond({"error": "Invalid origin"}, 403)
         try:
             length = int(self.headers.get("Content-Length", 0))
-            if not 0 < length <= 2048 or not self.headers.get("Content-Type", "").startswith("application/json"):
+            if not 0 < length <= 16384 or not self.headers.get("Content-Type", "").startswith("application/json"):
                 raise ValueError("Invalid request")
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict):
@@ -313,7 +318,10 @@ class Handler(BaseHTTPRequestHandler):
             with LINK.lock:
                 if RUNNER.active and path not in ('/api/test/cancel','/api/command'):
                     raise ValueError('自動測試進行中，請先中止並等待停止確認')
-                if path == '/api/devices/assign':
+                if path == '/api/ride-plan':
+                    save_plan(RIDE_PLAN,data.get('plan'))
+                    LINK.event('已保存騎乘流程；未操作裝置')
+                elif path == '/api/devices/assign':
                     DEVICES.assign(data.get('role'),data.get('port'),list_ports.comports())
                     LINK.event('已保存裝置角色；未操作串口')
                 elif path == '/api/devices/clear':
@@ -336,7 +344,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif path == '/api/fault':
                     LINK.fault(data.get('fault'))
                 elif path == '/api/test/start':
-                    RUNNER.start(data.get('kind','sequence'),data.get('sweep'),data.get('cycles',5))
+                    RUNNER.start(data.get('kind','sequence'),data.get('sweep'),data.get('cycles',5),data.get('ride'))
                 elif path == '/api/test/cancel':
                     RUNNER.cancel()
                     LINK.command('STOP')

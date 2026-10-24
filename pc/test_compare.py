@@ -35,3 +35,9 @@ class CompareTests(unittest.TestCase):
   r=compare_reports(a,a)
   self.assertEqual(r['rows'][0]['metrics']['rpm']['delta'],0)
   self.assertIsNone(r['baseline']['provenance'])
+
+ def test_custom_plan_must_match_for_comparison(self):
+  a=report();a['kind']='ride';a['plan']={'steps':[{'seconds':3}]}
+  self.assertEqual(compare_reports(a,a)['kind'],'ride')
+  b=copy.deepcopy(a);b['plan']['steps'][0]['seconds']=4
+  with self.assertRaises(ValueError):compare_reports(a,b)
