@@ -48,3 +48,5 @@
 .bms-panel{margin-bottom:22px}.bms-panel p,.bms-panel label{font-size:12px;line-height:1.8;overflow-wrap:anywhere}.bms-panel select{display:block;width:100%;margin:12px 0}.bms-panel .device-card{margin:10px 0}
 
 .bms-cells{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:4px 12px}.bms-cells p{margin:4px 0;padding:7px;border:1px solid var(--line);border-radius:5px}#bmsSnapshot{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
+
+.bms-cell-table{overflow-x:auto}.bms-cell-table table{width:100%;border-collapse:collapse;font-size:12px;text-align:right}.bms-cell-table th,.bms-cell-table td{padding:9px 6px;border-bottom:1px solid var(--line);white-space:nowrap}.bms-cell-table th{color:var(--muted);font-weight:500}.bms-cell-table .cell-high{color:var(--blue);background:#91bcf60b}.bms-cell-table .cell-low{color:var(--orange);background:#ffb7800b}

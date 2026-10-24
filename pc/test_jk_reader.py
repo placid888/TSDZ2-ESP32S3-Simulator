@@ -49,6 +49,22 @@ class ReaderTests(unittest.TestCase):
         b=bytearray(status());b[-1]^=1
         with self.assertRaises(ValueError):status_24s(bytes(b),INFO)
 
+    def test_wire_resistance_balance_and_cycle_units(self):
+        b=bytearray(status());struct.pack_into('<H',b,64,185)
+        struct.pack_into('<H',b,64+24,141);struct.pack_into('<h',b,138,-123)
+        b[140]=2;struct.pack_into('<I',b,150,12);struct.pack_into('<I',b,154,222800)
+        t=status_24s(seal(b),INFO)
+        self.assertEqual(t['cells'][0]['wire_resistance_ohm'],0.185)
+        self.assertEqual(t['cells'][-1]['wire_resistance_ohm'],0.141)
+        self.assertEqual(t['balance_current_a'],-0.123);self.assertEqual(t['balance_state_raw'],2)
+        self.assertEqual(t['cycle_count'],12);self.assertEqual(t['cycle_capacity_ah'],222.8)
+        self.assertEqual(t['cell_average_v'],3.5)
+
+    def test_disabled_cells_are_excluded_from_minimum_and_resistance(self):
+        t=status_24s(status(),INFO)
+        self.assertEqual(t['cell_min_v'],3.5);self.assertEqual(len(t['cells']),13)
+        self.assertEqual(t['cells'][-1]['cell'],13)
+
     def test_device_version_is_from_jk_frame_not_ble_module(self):
         b=bytearray(300);b[:4]=HEADER;b[4]=3
         for off,key in [(6,'model'),(22,'hardware'),(30,'software')]:

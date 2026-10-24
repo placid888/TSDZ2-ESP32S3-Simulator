@@ -55,7 +55,8 @@ def status_24s(raw, info):
     s16=lambda n:struct.unpack_from('<h',raw,n)[0]
     mask=u32(54)
     if mask>>24 or not mask:raise ValueError('Enabled cell mask invalid')
-    cells=[{'cell':i+1,'voltage_v':u16(6+2*i)/1000} for i in range(24) if mask&(1<<i)]
+    cells=[{'cell':i+1,'voltage_v':u16(6+2*i)/1000,'wire_resistance_ohm':u16(64+2*i)/1000}
+           for i in range(24) if mask&(1<<i)]
     pack=u32(118)/1000;current=struct.unpack_from('<i',raw,126)[0]/1000
     temps=[s16(n)/10 for n in (130,132,134)]
     if any(not 1<=c['voltage_v']<=5 for c in cells) or abs(sum(c['voltage_v'] for c in cells)-pack)>1:
@@ -67,6 +68,9 @@ def status_24s(raw, info):
             'pack_voltage_v':pack,'current_a':current,'current_sign':'positive=charge, negative=discharge',
             'soc_percent':raw[141],'remaining_ah':u32(142)/1000,'nominal_ah':u32(146)/1000,
             'cell_count':len(cells),'cells':cells,'cell_delta_v':round(max(values)-min(values),3),
+            'cell_average_v':sum(values)/len(values),'cell_min_v':min(values),'cell_max_v':max(values),
+            'balance_current_a':s16(138)/1000,'balance_state_raw':raw[140],
+            'cycle_count':u32(150),'cycle_capacity_ah':u32(154)/1000,
             'temperature_1_c':temps[0],'temperature_2_c':temps[1],'mos_temperature_c':temps[2],
             'alarm_raw':u16(136),'checksum_valid':True,'mode':'single_snapshot_then_disconnect'}
 

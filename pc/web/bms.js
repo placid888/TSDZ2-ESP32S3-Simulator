@@ -21,8 +21,23 @@ function renderBms(data){
     $('bmsSnapshotVersion').textContent=`${t.device_info.model} · HW ${t.device_info.hardware} / SW ${t.device_info.software}`;
     $('bmsSnapshotValues').textContent=`${t.pack_voltage_v.toFixed(3)} V · ${t.current_a.toFixed(3)} A · SOC ${t.soc_percent}% · ${t.cell_count} 串 · 壓差 ${t.cell_delta_v.toFixed(3)} V`;
     $('bmsSnapshotTemps').textContent=`溫度 1 ${t.temperature_1_c.toFixed(1)}°C / 溫度 2 ${t.temperature_2_c.toFixed(1)}°C / MOS ${t.mos_temperature_c.toFixed(1)}°C。電流正值為充電、負值為放電。`;
+    const number=(value,digits)=>Number.isFinite(value)?value.toFixed(digits):'—';
+    $('bmsCellSummary').textContent=`平均 ${number(t.cell_average_v,3)} V · 最高 ${number(t.cell_max_v,3)} V · 最低 ${number(t.cell_min_v,3)} V`;
+    const balance=t.balance_state_raw===0?'關閉':[1,2].includes(t.balance_state_raw)?'進行中':`未知（${t.balance_state_raw??'未取得'}）`;
+    $('bmsBalance').textContent=`均衡 ${balance} · 均衡電流 ${number(t.balance_current_a,3)} A`;
+    $('bmsCycles').textContent=`循環次數 ${Number.isFinite(t.cycle_count)?t.cycle_count:'—'} · 累計循環容量 ${number(t.cycle_capacity_ah,3)} Ah`;
     $('bmsSnapshotAlarm').textContent=`告警原始碼：0x${t.alarm_raw.toString(16).toUpperCase().padStart(4,'0')}（名稱解碼待核對）；資料封包校驗通過。`;
-    $('bmsCells').replaceChildren();for(const cell of t.cells){const row=document.createElement('p');row.textContent=`電芯 ${String(cell.cell).padStart(2,'0')} · ${cell.voltage_v.toFixed(3)} V`;$('bmsCells').append(row);}
+    $('bmsCells').replaceChildren();
+    for(const cell of t.cells){
+      const row=document.createElement('tr');
+      const high=cell.voltage_v===t.cell_max_v,low=cell.voltage_v===t.cell_min_v;
+      row.className=t.cell_delta_v===0?'':high?'cell-high':low?'cell-low':'';
+      const marker=t.cell_delta_v===0?'相同':high?'最高':low?'最低':'';
+      for(const text of [String(cell.cell).padStart(2,'0'),cell.voltage_v.toFixed(3),number(cell.wire_resistance_ohm,3),marker]){
+        const column=document.createElement('td');column.textContent=text;row.append(column);
+      }
+      $('bmsCells').append(row);
+    }
   }
   enabled();
 }
