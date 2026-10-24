@@ -67,9 +67,18 @@ class BmsStore:
         return {'snapshots':sorted(items,key=lambda x:x['captured_at'],reverse=True),'skipped':skipped}
 
     def csv(self, id):
-        r=self.read(id);t=r['telemetry']
-        rows=[{'snapshot_id':id,'captured_at_utc':datetime.fromtimestamp(t['captured_at'],timezone.utc).isoformat(),
-               'bms_address':r['address'],'pack_voltage_v':t['pack_voltage_v'],'current_a':t['current_a'],
-               'soc_percent':t['soc_percent'],'cell':c['cell'],'cell_voltage_v':c['voltage_v'],
-               'wire_resistance_ohm':c['wire_resistance_ohm']} for c in t['cells']]
-        return csv_bytes(rows)
+        return snapshot_csv(self.read(id))
+
+    def latest(self, address):
+        if not address:return None
+        candidates=[item for item in self.listing()['snapshots'] if item['address']==address]
+        return self.read(candidates[0]['id']) if candidates else None
+
+
+def snapshot_csv(r):
+    t=r['telemetry']
+    rows=[{'snapshot_id':r['id'],'captured_at_utc':datetime.fromtimestamp(t['captured_at'],timezone.utc).isoformat(),
+           'bms_address':r['address'],'pack_voltage_v':t['pack_voltage_v'],'current_a':t['current_a'],
+           'soc_percent':t['soc_percent'],'cell':c['cell'],'cell_voltage_v':c['voltage_v'],
+           'wire_resistance_ohm':c['wire_resistance_ohm']} for c in t['cells']]
+    return csv_bytes(rows)

@@ -13,7 +13,7 @@ class BenchBundleTests(unittest.TestCase):
     def test_empty_evidence_still_exports_explicit_missing_items(self):
         with self.open() as archive:
             context=json.loads(archive.read('context.json'))
-            self.assertEqual(len(context['missing_or_errors']),2)
+            self.assertEqual(len(context['missing_or_errors']),3)
             self.assertFalse(context['hil_verified'])
             self.assertNotIn('esp32-report.json',archive.namelist())
 
@@ -38,3 +38,15 @@ class BenchBundleTests(unittest.TestCase):
     def test_only_fixed_members_are_written(self):
         with self.open(model={'status':'passed','path':'../../secret.txt'}) as archive:
             self.assertEqual(set(archive.namelist()),{'preparation.json','context.json','README.txt','SHA256SUMS.txt','esp32-report.json'})
+
+    def test_bms_evidence_keeps_original_time_and_same_cell_data(self):
+        bms={'id':'a'*32,'address':'AA:BB:CC:DD:EE:FF','telemetry':{
+             'captured_at':1234567890,'pack_voltage_v':3.5,'current_a':0,'soc_percent':50,
+             'cells':[{'cell':1,'voltage_v':3.5,'wire_resistance_ohm':.185}]}}
+        with self.open(bms=bms) as archive:
+            self.assertEqual(json.loads(archive.read('bms-snapshot.json')),bms)
+            context=json.loads(archive.read('context.json'))
+            self.assertEqual(context['bms_captured_at'],1234567890);self.assertFalse(context['hil_verified'])
+            self.assertIn('0.185',archive.read('bms-cells.csv').decode('utf-8-sig'))
+            manifest=archive.read('SHA256SUMS.txt').decode()
+            self.assertIn(hashlib.sha256(archive.read('bms-snapshot.json')).hexdigest(),manifest)

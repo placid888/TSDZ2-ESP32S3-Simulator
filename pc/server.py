@@ -272,7 +272,7 @@ class Handler(BaseHTTPRequestHandler):
                 STM8_BUILD.snapshot(stm8['repository_url']),
                 DEVICES.snapshot(list_ports.comports(), motor['port']), RUNNER.snapshot()['active'])
             if path == '/api/bench-bundle':
-                issues=[]; model=None; build=None; model_id=None
+                issues=[]; model=None; build=None; model_id=None; bms=None
                 listing=REPORTS.listing()
                 if listing['skipped']:issues.append(f"略過 {listing['skipped']} 份無效 ESP32 報告")
                 if listing['reports']:
@@ -281,7 +281,9 @@ class Handler(BaseHTTPRequestHandler):
                     except (OSError, ValueError, TypeError):issues.append('ESP32 報告讀取失敗')
                 try:build=STM8_BUILD.report()
                 except (OSError, ValueError, TypeError, AttributeError, KeyError):issues.append('STM8 離線產物缺少或無法校驗')
-                return self.respond(bench_bundle(result,model,build,issues,model_id),kind='application/zip',filename='tsdz-bench-evidence.zip')
+                try:bms=BMS_HISTORY.latest(JK_BMS.snapshot()['selected_address'])
+                except (OSError,ValueError,TypeError,KeyError,OverflowError):issues.append('BMS 歷史快照讀取失敗')
+                return self.respond(bench_bundle(result,model,build,issues,model_id,bms),kind='application/zip',filename='tsdz-bench-evidence.zip')
             return self.respond(result, filename='bench-preparation.json' if path.endswith('/report') else None)
         if path == '/api/stm8/state':
             return self.respond(STM8.snapshot())

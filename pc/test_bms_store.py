@@ -46,3 +46,16 @@ class BmsStoreTests(unittest.TestCase):
             with self.assertRaises(ValueError):self.store.read(name)
         self.state['telemetry']['cells'][0]['voltage_v']=float('nan')
         with self.assertRaises(ValueError):self.store.save(self.state,{})
+
+    def test_latest_selects_only_registered_battery(self):
+        first=self.store.save(self.state,{})
+        self.state['selected_address']='11:22:33:44:55:66';self.state['telemetry']['captured_at']+=100
+        self.store.save(self.state,{})
+        self.assertEqual(self.store.latest('AA:BB:CC:DD:EE:FF')['id'],first['id'])
+        self.assertIsNone(self.store.latest(None));self.assertIsNone(self.store.latest('OTHER'))
+
+    def test_corrupt_newest_snapshot_falls_back_to_valid_same_target(self):
+        first=self.store.save(self.state,{})
+        self.state['telemetry']['captured_at']+=100;last=self.store.save(self.state,{})
+        self.store.path(last['id']).write_text('broken')
+        self.assertEqual(self.store.latest(self.state['selected_address'])['id'],first['id'])
