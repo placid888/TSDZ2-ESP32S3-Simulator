@@ -22,6 +22,8 @@
 
 ## 後續接入
 
+已完成 STM8 固定版本離線編譯；流程與實測雜湊見 [STM8 離線編譯](stm8-offline-build.md)。使用 SDCC 4.4.0，兩次獨立編譯 HEX 一致；保留 19 行上游警告。控制台可偵測 PlatformIO 安裝的 SDCC；目前仍不提供 STM8 燒錄操作。
+
 ### STM8 來源核對（2026-10-24）
 
 使用者指定的[控制器燒錄指南](https://github.com/TSDZ2-ESP32/TSDZ2-ESP32-Wiki/wiki/TSDZ-Controller-Flash)對應 STM8 控制器。指南連到 Wiki repository 的 `bin/STM8` 成品目錄；查詢時包含 `TSDZ2-v16.zip`，尚未下載或驗證其內容及相容性。

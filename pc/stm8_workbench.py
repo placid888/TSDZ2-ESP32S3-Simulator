@@ -16,6 +16,8 @@ def find_tools():
     roots=[Path(os.environ.get('ProgramFiles','C:/Program Files')),Path(os.environ.get('ProgramFiles(x86)','C:/Program Files (x86)'))]
     for key,exe,relative in [('sdcc','sdcc','SDCC/bin/sdcc.exe'),('stvp','STVP_CmdLine','STMicroelectronics/st_toolset/stvp/STVP_CmdLine.exe'),('stm8flash','stm8flash',None)]:
         candidates=([Path(shutil.which(exe))] if shutil.which(exe) else [])+[p/relative for p in roots if relative]
+        if key=='sdcc':
+            candidates.append(Path(os.environ.get('PLATFORMIO_CORE_DIR',str(Path.home()/'.platformio')))/'packages'/'toolchain-sdcc'/'bin'/'sdcc.exe')
         paths[key]=next((str(p) for p in candidates if p.is_file()),None)
     return paths
 
