@@ -24,6 +24,7 @@ from ride_plan import read_plan, save_plan
 from stm8_workbench import Stm8Workbench
 from stm8_artifacts import Stm8Artifacts
 from android_app import launch_selected
+from readiness import preparation
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -247,6 +248,13 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path in ('/api/readiness', '/api/readiness/report'):
+            motor = LINK.snapshot()
+            stm8 = STM8.snapshot()
+            result = preparation(motor, ANDROID.snapshot(), stm8,
+                STM8_BUILD.snapshot(stm8['repository_url']),
+                DEVICES.snapshot(list_ports.comports(), motor['port']), RUNNER.snapshot()['active'])
+            return self.respond(result, filename='bench-preparation.json' if path.endswith('/report') else None)
         if path == '/api/stm8/state':
             return self.respond(STM8.snapshot())
         if path == '/api/stm8/build':

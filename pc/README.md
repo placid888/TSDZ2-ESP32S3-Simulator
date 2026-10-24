@@ -259,3 +259,9 @@ STM8 工作台可讀取 `pc/local/stm8-build/build-report.json` 及 `firmware.he
 入口依據[原作者 AndroidManifest.xml](https://github.com/TSDZ2-ESP32/TSDZ2-Android/blob/master/app/src/main/AndroidManifest.xml)：`spider65.ebike.tsdz2_esp32/.MainActivity`。使用明確 `adb -s`、固定 `pm path` / `am start -W -n`，不安裝 APK、授權權限或操作 App 內設定。App 自身啟動後的行為由該 App 決定。Android 回報啟動成功不等於 BLE、Gateway 或 STM8 已驗證。
 
 成功路徑以測試替身驗證；目前未接入測試手機，實機啟動與真 BLE 回歸仍待驗證。
+
+## 整合測試準備狀態
+
+首頁集中顯示 ESP32 通訊與停止狀態、STM8 離線產物、Android 最近授權快照，以及尚待驗證的 Gateway / SWIM / DAC / BLE。按「更新準備狀態」只讀取狀態與本機裝置清單，不開啟串口、不執行 ADB 掃描、App 啟動、編譯或燒錄。手機狀態必須於 30 秒內重新偵測；準備頁不會代替偵測。
+
+`GET /api/readiness` 回傳準備快照，`GET /api/readiness/report` 下載當下重新彙整的 JSON。每項獨立取得，並非同時量測。`model_start_ready` 只表示當下模型連線、有效、停止且沒有自動流程；不授權任何實體操作。`hil_ready` 目前固定 false，等接線、硬體及跨裝置流程驗證實作後才評估。報告顯示彙整時間及各端可用的觀測時間，不把先前編譯或手機快照當成完整 HIL 成功。

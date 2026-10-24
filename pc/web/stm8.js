@@ -48,3 +48,21 @@ async function loadStm8Build(){
 }
 $('stm8BuildRefresh').onclick=loadStm8Build;
 loadStm8Build();
+
+async function loadReadiness(){
+  $('readinessRefresh').disabled=true;
+  try{
+    const data=await api('readiness');
+    $('readinessSummary').textContent=`${data.ready_count}/${data.checks.length} 項準備確認 · ${data.model_start_ready?'ESP32 模型可開始測試':'ESP32 模型待確認'} · 完整 HIL 尚未就緒`;
+    $('readinessTime').textContent='檢視時間：'+new Date(data.generated_at*1000).toLocaleString('zh-TW',{hour12:false})+'（下載時會重新彙整）';
+    $('readinessChecks').replaceChildren();
+    for(const check of data.checks){
+      const row=document.createElement('div');row.className='device-card';
+      const title=document.createElement('b');title.textContent=(check.ready?'✓ 已確認 · ':'待準備 · ')+check.label;
+      const detail=document.createElement('p');detail.textContent=check.detail;row.append(title,detail);$('readinessChecks').append(row);
+    }
+  }catch(e){$('readinessSummary').textContent=e.message;$('readinessChecks').replaceChildren();}
+  finally{$('readinessRefresh').disabled=false;}
+}
+$('readinessRefresh').onclick=loadReadiness;
+loadReadiness();
