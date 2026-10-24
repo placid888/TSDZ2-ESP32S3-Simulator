@@ -1,5 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
+let motorAvailable=false;
 let state = null, busy = false, lastEvent = '', initialized = false, transportError = false, lastTestResult = '';
 const fields = [ ['BATTERY','電池電壓','OPEN CIRCUIT','V',0,60,48], ['CADENCE','踩踏頻率','CADENCE','RPM',0,200,80], ['TORQUE','踩踏扭力','PEDAL TORQUE','Nm',0,200,60], ['GRADE','道路坡度','ROAD GRADE','%',-30,30,0] ];
 for (const [id,label,sub,unit,min,max,value] of fields) {
@@ -17,6 +18,8 @@ async function api(path,data){
 function enabled(){
   const active=!!state?.test?.active, ok=!!state?.connected&&!state.stale&&!busy&&!active;
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
+  $('registeredMotor').disabled=busy||active||!!state?.connected||!motorAvailable;
+  $('deviceSave').disabled=busy||active;$('deviceClear').disabled=busy||active;
   $('connect').disabled=busy||active;$('ports').disabled=!!state?.connected||busy;
   $('enduranceStart').disabled=!ok;$('enduranceCancel').disabled=!active||busy;$('enduranceCycles').disabled=active;
   $('testStart').disabled=!ok;$('testCancel').disabled=!active||busy;
@@ -290,4 +293,47 @@ $('compareStart').onclick=async()=>{
     $('compareResult').hidden=false;
   }catch(e){if(request===compareRequest)$('compareMessage').textContent=e.message;}
   finally{$('compareStart').disabled=false;}
+};
+
+let deviceScanning=false;
+async function scanDevices(){
+  if(deviceScanning)return;deviceScanning=true;$('deviceScan').disabled=true;
+  try{
+    const d=await api('devices'),selected=$('devicePort').value;
+    $('devicePort').replaceChildren(new Option('請選擇裝置',''));
+    for(const p of d.ports)$('devicePort').append(new Option(`${p.port} · ${p.description}${p.serial_number?' · 序號 '+p.serial_number:''}`,p.port));
+    if(d.ports.some(p=>p.port===selected))$('devicePort').value=selected;
+    motorAvailable=d.roles.some(r=>r.role==='motor'&&r.status==='online');
+    enabled();
+    $('deviceRoles').replaceChildren();
+    const statuses={unassigned:'尚未指定',offline:'未接入',ambiguous:'識別不唯一',online:'已接入'};
+    for(const r of d.roles){
+      const card=document.createElement('div');card.className='device-card';
+      const title=document.createElement('b');title.textContent=r.label;
+      const text=document.createElement('p');text.textContent=`${statuses[r.status]}${r.device?' · '+r.device.port:''}${r.connected?' · 模擬器連線中':''}`;
+      const hint=document.createElement('small');hint.textContent=r.identity_note;
+      card.append(title,text,hint);$('deviceRoles').append(card);
+    }
+    for(const r of d.pending){const card=document.createElement('div');card.className='device-card';const title=document.createElement('b');title.textContent=r.label;const text=document.createElement('p');text.textContent=r.status;card.append(title,text);$('deviceRoles').append(card);}
+    $('deviceMessage').textContent=d.error||`找到 ${d.ports.length} 個串口 · ADB ${d.tools.adb?'已安裝':'未在環境找到'} · STM8 燒錄工具 ${d.tools.stm8flash||d.tools.st_link_cli?'已找到':'尚未找到'}。登記角色不代表硬體身分已驗證。`;
+  }catch(e){$('deviceMessage').textContent=e.message;}
+  finally{deviceScanning=false;$('deviceScan').disabled=false;}
+}
+$('deviceScan').onclick=scanDevices;
+$('deviceAssign').onsubmit=async e=>{
+  e.preventDefault();const port=$('devicePort').value;if(!port){$('deviceMessage').textContent='請先選擇 PC 串口';return;}
+  await action('devices/assign',{role:$('deviceRole').value,port},'裝置角色已保存，未啟動或燒錄。');
+  await scanDevices();
+};
+scanDevices();
+
+$('deviceClear').onclick=async()=>{await action('devices/clear',{role:$('deviceRole').value},'角色登記已解除，裝置連線不變。');await scanDevices();};
+
+$('registeredMotor').onclick=async()=>{
+  try{
+    const d=await api('devices'),motor=d.roles.find(r=>r.role==='motor');
+    if(motor?.status!=='online'||!motor.device)throw new Error('已登記模擬器未接入或識別不唯一，請重新掃描');
+    await action('connect',{port:motor.device.port},'已連接登記的模擬器，未啟動運轉。');
+    await scanDevices();
+  }catch(e){notice(e.message,true);}
 };

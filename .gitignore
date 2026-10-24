@@ -15,3 +15,6 @@ pc/reports/
 
 # Private chat uploads are not project source
 .codex-remote-attachments/
+
+# Local device assignments and USB identities
+pc/local/

@@ -196,3 +196,12 @@ API：`GET /api/compare?baseline=<報告檔名>&candidate=<報告檔名>`；條�
 歷史報告選取後可按「下載完整測試包 ZIP」，或呼叫 `GET /api/bundle/<報告檔名>`。封裝 report.json、samples.csv、steps.csv、points.csv、provenance.json、README.txt 與 SHA256SUMS.txt；只含選取報告的已保存資料，不操作串口、不重新採樣。
 
 CSV 為 UTF-8 BOM，巢狀欄位以 JSON 文字保存；以 =、+、-、@ 開始的文字加單引號，數字保持原值。完整原值仍在 report.json。舊報告未記錄的版本為 null，無採樣時 CSV 為空表。SHA256SUMS.txt 列出其餘六個檔案的 SHA-256，供解壓後檢查完整性。
+## 裝置管理中心（統一控制台第一階段）
+
+`GET /api/devices` 僅列舉 PC 串口與工具是否在 PATH，不會開啟串口、送指令、啟動 ADB 或燒錄。支援 motor、gateway、author_board 三個串口角色；原作者 ESP32 板的用途仍待確認。STM8/ST-Link 與 Android 保留獨立接入位置，不把沒有串口當作未插入除錯器或手機的證據。
+
+`POST /api/devices/assign` 使用 `{"role":"motor","port":"COM5"}` 保存目前選定裝置；同一個裝置不能登記為兩個角色。`POST /api/devices/clear` 使用 `{"role":"motor"}` 解除角色，保持現有連線不變。自動測試中不允許改角色。連接模擬器時，若該裝置已登記為 Gateway 或原作者板，會拒絕從模擬器入口連接。
+
+本機設定為 `pc/local/devices.json`，不加入 Git。識別以 VID/PID/USB 序號為主，可追蹤 COM 編號變動；沒有序號時只能以目前串口與硬體描述登記，介面明示換接孔後須核對。識別重複顯示歧義並拒絕新登記。損壞的設定不自動覆寫。
+
+這一階段不包含 STM8/Gateway 燒錄、未知協定、ADB 操作或跨裝置流程；後續將以獨立模組接入。角色登記只是人工指定用途，不等於已驗證設備韌體。

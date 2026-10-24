@@ -17,6 +17,7 @@ from scenarios import ScenarioRunner
 from report_store import ReportStore
 from report_compare import compare_reports
 from report_bundle import make_bundle
+from devices import DeviceRegistry
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -205,6 +206,7 @@ LINK = BenchLink()
 RUNNER = ScenarioRunner(LINK)
 REPORTS = ReportStore(RUNNER.reports)
 STATIC = Path(__file__).with_name("web")
+DEVICES = DeviceRegistry(Path(__file__).with_name("local")/"devices.json")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -234,6 +236,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path == '/api/devices':
+            return self.respond(DEVICES.snapshot(list_ports.comports(),LINK.port_name))
         if path.startswith('/api/bundle/'):
             try:
                 name=path[len('/api/bundle/'):]
@@ -309,7 +313,15 @@ class Handler(BaseHTTPRequestHandler):
             with LINK.lock:
                 if RUNNER.active and path not in ('/api/test/cancel','/api/command'):
                     raise ValueError('自動測試進行中，請先中止並等待停止確認')
-                if path == "/api/connect":
+                if path == '/api/devices/assign':
+                    DEVICES.assign(data.get('role'),data.get('port'),list_ports.comports())
+                    LINK.event('已保存裝置角色；未操作串口')
+                elif path == '/api/devices/clear':
+                    DEVICES.clear(data.get('role'))
+                    LINK.event('已解除裝置角色；未操作串口')
+                elif path == "/api/connect":
+                    role=DEVICES.role_for(data.get('port'),list_ports.comports())
+                    if role and role!='motor':raise ValueError('此裝置登記為其他角色，請核對後再連接模擬器')
                     LINK.connect(data.get("port"))
                 elif path == "/api/disconnect":
                     LINK.disconnect()
