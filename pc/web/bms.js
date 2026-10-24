@@ -17,7 +17,7 @@ function renderBms(data){
   $('bmsSnapshot').hidden=!data.telemetry;
   if(data.telemetry){
     const t=data.telemetry;
-    $('bmsSnapshotTime').textContent='單次快照：'+new Date(t.captured_at*1000).toLocaleString('zh-TW',{hour12:false})+'；不自動更新，非持續即時連線。'+(data.error?'本次操作失敗，以下保留先前資料。':'');
+    $('bmsSnapshotTime').textContent='採樣時間：'+new Date(t.captured_at*1000).toLocaleString('zh-TW',{hour12:false})+'；每次讀取後斷線，定時狀態見上方。'+(data.error?'本次操作失敗，以下保留先前資料。':'');
     $('bmsSnapshotVersion').textContent=`${t.device_info.model} · HW ${t.device_info.hardware} / SW ${t.device_info.software}`;
     $('bmsSnapshotValues').textContent=`${t.pack_voltage_v.toFixed(3)} V · ${t.current_a.toFixed(3)} A · SOC ${t.soc_percent}% · ${t.cell_count} 串 · 壓差 ${t.cell_delta_v.toFixed(3)} V`;
     $('bmsSnapshotTemps').textContent=`溫度 1 ${t.temperature_1_c.toFixed(1)}°C / 溫度 2 ${t.temperature_2_c.toFixed(1)}°C / MOS ${t.mos_temperature_c.toFixed(1)}°C。電流正值為充電、負值為放電。`;
@@ -53,12 +53,21 @@ $('bmsSave').onclick=async()=>{
   finally{bmsBusy=false;enabled();}
 };
 api('bms/state').then(renderBms).catch(e=>$('bmsMessage').textContent=e.message);
-$('bmsRead').onclick=async()=>{
-  if(bmsBusy)return;bmsBusy=true;enabled();$('bmsMessage').textContent='正在查詢裝置版本與電池狀態；完成後斷線…';
-  try{const r=await api('bms/read',{},45000);renderBms(r.bms);if(!r.bms.error)$('bmsMessage').textContent=r.save_error||'單次資料讀取完成，已斷線並保存快照。';await loadBmsHistory();}
-  catch(e){$('bmsMessage').textContent=e.message;}
+async function readBmsOnce(){
+  if(bmsBusy)throw new Error('電池操作正在進行');bmsBusy=true;enabled();$('bmsMessage').textContent='正在查詢裝置版本與電池狀態；完成後斷線…';
+  try{const r=await api('bms/read',{},45000);renderBms(r.bms);if(r.bms.error||r.save_error)throw new Error(r.bms.error||r.save_error);$('bmsMessage').textContent='單次資料讀取完成，已斷線並保存快照。';await loadBmsHistory();return true;}
+  catch(e){$('bmsMessage').textContent=e.message;return false;}
   finally{bmsBusy=false;enabled();}
-};
+}
+$('bmsRead').onclick=readBmsOnce;
+const bmsSchedule=new BmsSnapshotSchedule({
+  read:async()=>{if(!await readBmsOnce())throw new Error('read failed');},
+  allowed:()=>!!state&&!state.test?.active&&!busy&&!transportError&&bmsSelected,
+  onState:status=>{bmsMonitoring=status.active;$('bmsMonitorStatus').textContent=status.message;enabled();}
+});
+$('bmsMonitorStart').onclick=()=>{try{bmsSchedule.start(Number($('bmsMonitorInterval').value)).catch(e=>$('bmsMonitorStatus').textContent=e.message);}catch(e){$('bmsMonitorStatus').textContent=e.message;}};
+$('bmsMonitorStop').onclick=()=>bmsSchedule.stop();
+window.addEventListener('pagehide',()=>bmsSchedule.stop('頁面已離開，排程停止'));
 
 async function loadBmsHistory(){
   $('bmsHistoryRefresh').disabled=true;

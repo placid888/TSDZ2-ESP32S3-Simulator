@@ -366,10 +366,10 @@ class Handler(BaseHTTPRequestHandler):
             writer.writeheader()
             writer.writerows(rows)
             return self.respond(content.getvalue(), kind="text/csv; charset=utf-8")
-        files = {"/": "index.html", "/app.js": "app.js", "/ride.js": "ride.js", "/android.js": "android.js", "/stm8.js": "stm8.js", "/bms.js": "bms.js", "/style.css": "style.css"}
+        files = {"/": "index.html", "/app.js": "app.js", "/ride.js": "ride.js", "/android.js": "android.js", "/stm8.js": "stm8.js", "/bms.js": "bms.js", "/bms_schedule.js": "bms_schedule.js", "/style.css": "style.css"}
         if path not in files:
             return self.respond({"error": "Not found"}, 404)
-        kind = {"/": "text/html", "/app.js": "text/javascript", "/ride.js": "text/javascript", "/android.js": "text/javascript", "/stm8.js": "text/javascript", "/bms.js": "text/javascript", "/style.css": "text/css"}[path]
+        kind = {"/": "text/html", "/app.js": "text/javascript", "/ride.js": "text/javascript", "/android.js": "text/javascript", "/stm8.js": "text/javascript", "/bms.js": "text/javascript", "/bms_schedule.js": "text/javascript", "/style.css": "text/css"}[path]
         return self.respond((STATIC / files[path]).read_bytes(), kind=kind + "; charset=utf-8")
 
     def do_POST(self):

@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let motorAvailable=false,androidScanning=false,androidReady=false,androidCapturing=false,androidSelectedReady=false,androidInitialized=false;
-let bmsBusy=false,bmsReady=false,bmsSelected=false;
+let bmsBusy=false,bmsReady=false,bmsSelected=false,bmsMonitoring=false;
 let state = null, busy = false, lastEvent = '', initialized = false, transportError = false, lastTestResult = '';
 const fields = [ ['BATTERY','電池電壓','OPEN CIRCUIT','V',0,60,48], ['CADENCE','踩踏頻率','CADENCE','RPM',0,200,80], ['TORQUE','踩踏扭力','PEDAL TORQUE','Nm',0,200,60], ['GRADE','道路坡度','ROAD GRADE','%',-30,30,0] ];
 for (const [id,label,sub,unit,min,max,value] of fields) {
@@ -23,10 +23,13 @@ function enabled(){
   for(const input of document.querySelectorAll('#rideFields input,#rideSteps input,#rideSteps button'))input.disabled=busy||active;
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
   $('quickStop').disabled=$('stop').disabled;
-  $('bmsScan').disabled=busy||active||bmsBusy;
-  $('bmsSave').disabled=busy||active||bmsBusy||!bmsReady;
-  $('bmsRead').disabled=busy||active||bmsBusy||!bmsSelected;
-  $('bmsTarget').disabled=busy||active||bmsBusy;
+  $('bmsScan').disabled=busy||active||bmsBusy||bmsMonitoring;
+  $('bmsSave').disabled=busy||active||bmsBusy||bmsMonitoring||!bmsReady;
+  $('bmsRead').disabled=busy||active||bmsBusy||bmsMonitoring||!bmsSelected;
+  $('bmsTarget').disabled=busy||active||bmsBusy||bmsMonitoring;
+  $('bmsMonitorStart').disabled=busy||active||bmsBusy||bmsMonitoring||!bmsSelected;
+  $('bmsMonitorInterval').disabled=bmsBusy||bmsMonitoring;
+  $('bmsMonitorStop').disabled=!bmsMonitoring;
   $('stm8Save').disabled=busy||active;
   $('stm8Source').disabled=busy||active;
   $('androidLaunch').disabled=busy||active||androidScanning||androidCapturing||!androidSelectedReady;
