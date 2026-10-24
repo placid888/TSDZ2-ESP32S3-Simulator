@@ -29,3 +29,5 @@
   .report-compare td:nth-child(n+3)::before{content:attr(data-label);display:block;color:var(--muted);font-size:10px;margin-bottom:5px}
   .report-compare td:last-child{color:var(--green)}
 }
+
+#historyBundle{margin-left:12px}@media(max-width:640px){#historyBundle{display:block;margin-left:0}}

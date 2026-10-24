@@ -251,6 +251,8 @@ $('historySelect').onchange=async()=>{
     $('historyProvenance').textContent=provenanceText(r.provenance);
     $('historyDownload').href='/api/reports/'+encodeURIComponent(id);
     $('historyDownload').download=id;
+    $('historyBundle').href='/api/bundle/'+encodeURIComponent(id);
+    $('historyBundle').download=id.replace(/\.json$/,'.zip');
     $('historyRows').replaceChildren();
     const rows=[...(r.steps||[]).map(s=>`${s.passed?'PASS':'FAIL'} · ${s.name} · ${s.criteria}${s.observed?' · 實測 '+Number(s.observed.rpm).toFixed(1)+' RPM / '+Number(s.observed.current_a).toFixed(2)+' A / '+Number(s.observed.battery_v).toFixed(2)+' V':''}`),
       ...(r.points||[]).map(p=>`${p.passed?'PASS':'FAIL'} · ${p.voltage_v} V / PWM ${p.pwm_percent}% / 坡度 ${p.grade_percent}% · ${Number(p.observed.rpm).toFixed(1)} RPM / ${Number(p.observed.current_a).toFixed(2)} A`)];

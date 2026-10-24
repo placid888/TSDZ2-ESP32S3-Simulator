@@ -16,6 +16,7 @@ from serial.tools import list_ports
 from scenarios import ScenarioRunner
 from report_store import ReportStore
 from report_compare import compare_reports
+from report_bundle import make_bundle
 from provenance import source_identity
 PC_IDENTITY = source_identity()
 
@@ -210,7 +211,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
 
-    def respond(self, data, status=200, kind="application/json; charset=utf-8"):
+    def respond(self, data, status=200, kind="application/json; charset=utf-8", filename=None):
         if isinstance(data, (dict, list)):
             data = json.dumps(data, allow_nan=False, ensure_ascii=False).encode("utf-8")
         elif isinstance(data, str):
@@ -218,6 +219,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(data)))
+        if filename:self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
@@ -232,6 +234,13 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path.startswith('/api/bundle/'):
+            try:
+                name=path[len('/api/bundle/'):]
+                report=REPORTS.read(name)
+                return self.respond(make_bundle(report),kind='application/zip',filename=name[:-5]+'.zip')
+            except (OSError,ValueError,TypeError,OverflowError):
+                return self.respond({'error':'報告不存在或格式無效，無法建立測試包'},404)
         if path == '/api/compare':
             try:
                 query=parse_qs(urlparse(self.path).query)

@@ -191,3 +191,8 @@ POST `/api/test/start` 範例：`{"kind":"endurance","cycles":3}`。cycles 必�
 API：`GET /api/compare?baseline=<報告檔名>&candidate=<報告檔名>`；條件不符回傳 400，找不到檔案回傳 404。
 
 窄畫面（640 px 以下）會將比較表改為卡片，每筆直接顯示「基準、比較對象、差值」，不需左右捲動；較寬畫面維持表格。
+## 完整測試包 ZIP
+
+歷史報告選取後可按「下載完整測試包 ZIP」，或呼叫 `GET /api/bundle/<報告檔名>`。封裝 report.json、samples.csv、steps.csv、points.csv、provenance.json、README.txt 與 SHA256SUMS.txt；只含選取報告的已保存資料，不操作串口、不重新採樣。
+
+CSV 為 UTF-8 BOM，巢狀欄位以 JSON 文字保存；以 =、+、-、@ 開始的文字加單引號，數字保持原值。完整原值仍在 report.json。舊報告未記錄的版本為 null，無採樣時 CSV 為空表。SHA256SUMS.txt 列出其餘六個檔案的 SHA-256，供解壓後檢查完整性。
