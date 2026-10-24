@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let motorAvailable=false,androidScanning=false,androidReady=false;
+let motorAvailable=false,androidScanning=false,androidReady=false,androidCapturing=false,androidSelectedReady=false,androidInitialized=false;
 let state = null, busy = false, lastEvent = '', initialized = false, transportError = false, lastTestResult = '';
 const fields = [ ['BATTERY','電池電壓','OPEN CIRCUIT','V',0,60,48], ['CADENCE','踩踏頻率','CADENCE','RPM',0,200,80], ['TORQUE','踩踏扭力','PEDAL TORQUE','Nm',0,200,60], ['GRADE','道路坡度','ROAD GRADE','%',-30,30,0] ];
 for (const [id,label,sub,unit,min,max,value] of fields) {
@@ -10,8 +10,8 @@ for (const [id,label,sub,unit,min,max,value] of fields) {
 }
 for(let i=0;i<8;i++) { const el=document.createElement('div'); el.className='channel'; el.innerHTML=`<small>CH${i+1} · ${['電流','扭力','電壓','油門','預留','預留','預留','預留'][i]}</small><b id="dac${i}">—</b><small id="dacVolt${i}">— V</small><meter id="dacMeter${i}" min="0" max="65535" value="0" aria-label="CH${i+1} 數位碼"></meter>`; $('dacChannels').append(el); }
 function notice(text,error=false){$('notice').textContent=text;$('notice').className='notice'+(error?' error':'');}
-async function api(path,data){
-  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),12000);
+async function api(path,data,timeoutMs=12000){
+  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),timeoutMs);
   try { const r=await fetch('/api/'+path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined,signal:controller.signal});const v=await r.json();if(!r.ok)throw new Error(v.error||'操作失敗');return v; }
   finally{clearTimeout(timer);}
 }
@@ -21,7 +21,9 @@ function enabled(){
   for(const id of ['rideSave','rideLoad','rideAdd'])$(id).disabled=busy||active;
   for(const input of document.querySelectorAll('#rideFields input,#rideSteps input,#rideSteps button'))input.disabled=busy||active;
   $('run').disabled=!ok;$('apply').disabled=!ok;$('brake').disabled=!ok;$('stop').disabled=!state?.connected||busy;
-  $('androidSave').disabled=busy||active||androidScanning||!androidReady;$('androidTarget').disabled=busy||active||androidScanning;
+  $('androidCapture').disabled=busy||active||androidScanning||androidCapturing||!androidSelectedReady;
+  $('androidScan').disabled=androidScanning||androidCapturing||!androidInitialized;
+  $('androidSave').disabled=busy||active||androidScanning||androidCapturing||!androidReady;$('androidTarget').disabled=busy||active||androidScanning||androidCapturing;
   $('registeredMotor').disabled=busy||active||!!state?.connected||!motorAvailable;
   $('deviceSave').disabled=busy||active;$('deviceClear').disabled=busy||active;
   $('connect').disabled=busy||active;$('ports').disabled=!!state?.connected||busy;

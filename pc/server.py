@@ -19,6 +19,7 @@ from report_compare import compare_reports
 from report_bundle import make_bundle
 from devices import DeviceRegistry
 from android_device import AndroidMonitor
+from android_capture import CaptureStore, capture_selected
 from ride_plan import read_plan, save_plan
 from provenance import source_identity
 PC_IDENTITY = source_identity()
@@ -208,6 +209,7 @@ LINK = BenchLink()
 RUNNER = ScenarioRunner(LINK)
 REPORTS = ReportStore(RUNNER.reports)
 STATIC = Path(__file__).with_name("web")
+CAPTURES = CaptureStore(Path(__file__).with_name("local")/"android_captures")
 ANDROID = AndroidMonitor(Path(__file__).with_name("local")/"android_target.json")
 RIDE_PLAN = Path(__file__).with_name("local")/"ride_plan.json"
 DEVICES = DeviceRegistry(Path(__file__).with_name("local")/"devices.json")
@@ -240,6 +242,15 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.respond({"error": "Invalid host"}, 403)
         path = urlparse(self.path).path
+        if path == '/api/android/captures':
+            return self.respond(CAPTURES.listing())
+        if path.startswith('/api/android/captures/'):
+            name=path[len('/api/android/captures/'):]
+            try:
+                if name.endswith('.png'):return self.respond(CAPTURES.image(name[:-4]),kind='image/png')
+                if name.endswith('.json'):return self.respond(CAPTURES.read(name[:-5]))
+            except (OSError,ValueError,AttributeError):pass
+            return self.respond({'error':'截圖不存在或格式無效'},404)
         if path == '/api/android/state':
             return self.respond(ANDROID.snapshot())
         if path == '/api/android/scan':
@@ -321,6 +332,10 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("JSON request must be an object")
             path = urlparse(self.path).path
+            if path == '/api/android/capture':
+                with LINK.lock:
+                    if RUNNER.active:raise ValueError('請先結束正在執行的自動測試')
+                return self.respond({'ok':True,'capture':capture_selected(ANDROID,CAPTURES,PC_IDENTITY)})
             if path == '/api/android/select':
                 with LINK.lock:
                     if RUNNER.active:raise ValueError('請先結束正在執行的測試')

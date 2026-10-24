@@ -222,6 +222,16 @@ CSV 為 UTF-8 BOM，巢狀欄位以 JSON 文字保存；以 =、+、-、@ 開始
 
 `POST /api/android/select` 使用 `{"serial":"裝置序號"}` 登記測試目標。需要 30 秒內的正常掃描、唯一序號、state=device；未授權/離線/歧義/過期快照均拒絕。不自動挑第一支手機；已登記手機拔除時保留其身分，不改選其他裝置。設定為 `pc/local/android_target.json`，不加入 Git，測試執行中禁止改目標。
 
-目前不提供 App 啟動、安裝、截圖、檔案讀取、重開機、無線配對或手機內的操作。需有實體測試手機並在手機自行啟用 USB 偵錯、確認 PC 授權後，才能驗證真正的已授權連線。
+目前不提供 App 啟動、安裝、一般檔案讀取、重開機或無線配對。需有實體測試手機並在手機自行啟用 USB 偵錯、確認 PC 授權後，才能驗證真正的已授權連線。
 
 官方說明：https://developer.android.com/tools/adb
+
+## 測試手機截圖
+
+`POST /api/android/capture` 僅擷取已登記的測試目標。執行前重新掃描，必須保持同一序號、唯一且已授權；不接受請求指定其他序號。固定執行 `adb -s <已選序號> exec-out screencap -p`，10 秒逾時，以 binary bytes 接收，不經 shell 或文字換行轉換。Android 官方參考：https://developer.android.com/tools/adb#screencap
+
+PNG 上限 16 MiB、8192×8192 且不超過 4000 萬畫素，檢查簽章、區塊結構、CRC 與完整結尾。成功後保存於 `pc/local/android_captures/`，含時間、尺寸、指定手機、ADB/PC 版本與 SHA-256。這個目錄不加入 Git；不寫檔到手機，也不把截圖自動加入其他測試報告。
+
+`GET /api/android/captures` 列出已保存紀錄；`GET /api/android/captures/<32位id>.png` 讀取校驗後圖片，`.json` 讀取紀錄。固定 ID 與路徑檢查拒絕任意檔案讀取。控制台可查看、下載 PNG/JSON。自動測試執行中不接受新的手動截圖；ADB 等待不持有 ESP32 串口鎖。
+
+本階段尚未接上測試手機，截圖成功路徑以測試替身驗證；實機畫面擷取仍待手機接入與授權後確認。生產紀錄不包含測試替身圖片。
